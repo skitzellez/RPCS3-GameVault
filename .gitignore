@@ -129,3 +129,6 @@ CMakeUserPresets.json
 
 # claude
 CLAUDE.md
+
+# Game Vault: local packages (pack_gamevault.ps1)
+/dist/

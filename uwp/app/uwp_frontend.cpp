@@ -38,6 +38,8 @@
 #include "util/cctype.hpp"
 #include "util/yaml.hpp"
 
+#include <curl/curl.h>
+
 #include <roapi.h>
 #include <winstring.h>
 #include <inspectable.h>
@@ -1105,6 +1107,12 @@ namespace uwp_frontend
 			return true;
 		}
 
+		// Game Vault: set while the PS3 system software is fetched and installed by itself (auto_firmware); a game
+		// its link asks for meanwhile waits in g_boot_after_fw and starts when the install is done.
+		atomic_t<bool> g_fw_busy{false};
+		std::string g_boot_after_fw; // main thread only
+		void after_firmware();
+
 		// ---- Firmware install ----
 		void start_firmware_install(const std::string& path)
 		{
@@ -1129,7 +1137,8 @@ namespace uwp_frontend
 					if (error.empty())
 					{
 						set_status(fmt::format("Firmware %s installed", version), col_ok);
-						post_modal("Firmware installed", fmt::format("PS3 firmware %s is installed. Games now use the firmware's libraries.", version));
+						if (!g_fw_busy) // done by itself for a game: no pop-up in its way
+							post_modal("Firmware installed", fmt::format("PS3 firmware %s is installed. Games now use the firmware's libraries.", version));
 						if (g_ui)
 							g_ui->fonts_need_reload = true; // the firmware brings Japanese/Korean/Chinese fonts
 					}
@@ -1139,6 +1148,7 @@ namespace uwp_frontend
 						post_modal("Firmware installation failed", error + "\n\nDetails are in RPCS3.log (LocalState/rpcs3).");
 					}
 					rescan();
+					after_firmware();
 				});
 			}).detach();
 		}
@@ -2743,6 +2753,7 @@ namespace uwp_frontend
 	// Game Vault: the game its link named, kept until init() has finished (the link can come before the menu is ready).
 	std::mutex g_link_mutex;
 	std::string g_link_path;
+	std::string g_back_link; // main thread: Game Vault's link, opened when the game it started ends
 
 	void run_link_boot(const std::string& path)
 	{
@@ -2751,6 +2762,12 @@ namespace uwp_frontend
 		set_status("Starting the game...", col_dim);
 		g_host.run_on_main([path]()
 		{
+			if (g_fw_busy)
+			{
+				ui_log.notice("Game Vault: '%s' starts once the PS3 system software is installed", path);
+				g_boot_after_fw = path;
+				return;
+			}
 			if (!Emu.IsStopped(true))
 			{
 				ui_log.warning("Game Vault: not starting '%s': a game is still running", path);
@@ -2761,10 +2778,11 @@ namespace uwp_frontend
 		});
 	}
 
-	void boot_from_link(const std::string& path)
+	void boot_from_link(const std::string& path, const std::string& back_link)
 	{
 		if (path.empty())
 			return;
+		g_host.run_on_main([back_link]() { g_back_link = back_link; });
 		std::lock_guard lock(g_link_mutex);
 		if (!g_ready)
 		{
@@ -2772,6 +2790,161 @@ namespace uwp_frontend
 			return;
 		}
 		run_link_boot(path);
+	}
+
+	namespace
+	{
+		// ---- Game Vault: the PS3 system software by itself ----
+		// Without it many games don't start, and installing it was the hardest part for players (a file from Sony's
+		// site onto a USB drive, then the Install tab). Now: a PS3UPDAT.PUP already on a drive is installed; otherwise
+		// the current one is downloaded from Sony's own update server (the same file the PS3 and Sony's site use),
+		// kept beside the PS3 hard drive (E:/RPCS3/firmware), and installed. A game started meanwhile waits.
+		constexpr const char* c_sony_list = "http://fus01.ps3.update.playstation.net/update/ps3/list/us/ps3-updatelist.txt";
+
+		std::string fw_folder()
+		{
+			std::string hdd0 = g_host.no_storage.empty() ? rpcs3::utils::get_hdd0_dir() : std::string();
+			while (!hdd0.empty() && hdd0.back() == '/')
+				hdd0.pop_back();
+			const usz cut = hdd0.find_last_of('/');
+			return cut == std::string::npos ? g_host.local_dir + "firmware/" : hdd0.substr(0, cut + 1) + "firmware/";
+		}
+
+		std::string find_pup()
+		{
+			std::vector<std::string> places{fw_folder() + "PS3UPDAT.PUP", g_host.local_dir + "PS3UPDAT.PUP", g_host.local_dir + "firmware/PS3UPDAT.PUP"};
+			for (char d = 'D'; d <= 'Z'; d++)
+				for (const char* sub : {"", "PS3/UPDATE/", "PS3UPDATE/", "Game Vault/bios/", "Game Vault/bios/ps3/"})
+					places.push_back(std::string(1, d) + ":/" + sub + "PS3UPDAT.PUP");
+			for (const std::string& p : places)
+				if (fs::is_file(p) && fs::file(p).size() > (100u << 20))
+					return p;
+			return {};
+		}
+
+		usz fw_write(char* data, usz size, usz n, void* user)
+		{
+			return static_cast<fs::file*>(user)->write(data, size * n) == size * n ? size * n : 0;
+		}
+		usz fw_text(char* data, usz size, usz n, void* user)
+		{
+			std::string& out = *static_cast<std::string*>(user);
+			if (out.size() + size * n > 65536)
+				return 0;
+			out.append(data, size * n);
+			return size * n;
+		}
+		int fw_progress(void*, curl_off_t total, curl_off_t now, curl_off_t, curl_off_t)
+		{
+			static int shown = -1;
+			const int pct = total > 0 ? static_cast<int>(now * 100 / total) : 0;
+			if (pct != shown)
+			{
+				shown = pct;
+				set_status(fmt::format("Getting the PS3 system software from Sony... %d%%", pct), col_warn);
+			}
+			return 0;
+		}
+
+		// GET url into `file` (or into `text` when file is null). True on HTTP 200.
+		bool fw_get(const std::string& url, fs::file* file, std::string* text)
+		{
+			CURL* c = curl_easy_init();
+			if (!c)
+				return false;
+			char error[CURL_ERROR_SIZE]{};
+			curl_easy_setopt(c, CURLOPT_URL, url.c_str());
+			curl_easy_setopt(c, CURLOPT_USERAGENT, "PS3Update-agent/1.0");
+			curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
+			curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
+			curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 20L);
+			curl_easy_setopt(c, CURLOPT_LOW_SPEED_LIMIT, 1024L);
+			curl_easy_setopt(c, CURLOPT_LOW_SPEED_TIME, 60L);
+			curl_easy_setopt(c, CURLOPT_ERRORBUFFER, error);
+			if (file)
+			{
+				curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, fw_write);
+				curl_easy_setopt(c, CURLOPT_WRITEDATA, file);
+				curl_easy_setopt(c, CURLOPT_NOPROGRESS, 0L);
+				curl_easy_setopt(c, CURLOPT_XFERINFOFUNCTION, fw_progress);
+			}
+			else
+			{
+				curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, fw_text);
+				curl_easy_setopt(c, CURLOPT_WRITEDATA, text);
+			}
+			const CURLcode res = curl_easy_perform(c);
+			long http = 0;
+			curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &http);
+			curl_easy_cleanup(c);
+			if (res != CURLE_OK || http != 200)
+			{
+				ui_log.error("Game Vault: download of %s failed: %s, HTTP %d (%s)", url, curl_easy_strerror(res), http, error);
+				return false;
+			}
+			return true;
+		}
+
+		std::string download_pup()
+		{
+			std::string list;
+			if (!fw_get(c_sony_list, nullptr, &list))
+				return {};
+			// "...;CDN=http://dus01.ps3.update.playstation.net/update/ps3/image/us/<date_hash>/PS3UPDAT.PUP;..."
+			const usz end = list.find("/PS3UPDAT.PUP");
+			const usz start = end == std::string::npos ? end : list.rfind("CDN=", end);
+			if (start == std::string::npos)
+			{
+				ui_log.error("Game Vault: Sony's update list names no PS3UPDAT.PUP:\n%s", list);
+				return {};
+			}
+			const std::string url = list.substr(start + 4, end + 13 - (start + 4));
+			const std::string dir = fw_folder();
+			fs::create_path(dir);
+			const std::string part = dir + "PS3UPDAT.PUP.part", done = dir + "PS3UPDAT.PUP";
+			ui_log.notice("Game Vault: downloading the PS3 system software: %s -> %s", url, done);
+			bool ok;
+			{
+				fs::file f(part, fs::rewrite);
+				ok = f && fw_get(url, &f, nullptr);
+			}
+			if (!ok || fs::file(part).size() < (100u << 20) || !fs::rename(part, done, true))
+			{
+				fs::remove_file(part);
+				return {};
+			}
+			return done;
+		}
+
+		void after_firmware()
+		{
+			g_fw_busy = false;
+			if (!g_boot_after_fw.empty())
+				run_link_boot(std::exchange(g_boot_after_fw, {}));
+		}
+
+		void auto_firmware()
+		{
+			if (firmware_installed() || g_fw_busy.exchange(true))
+				return;
+			std::thread([]()
+			{
+				std::string pup = find_pup();
+				if (pup.empty())
+				{
+					set_status("Getting the PS3 system software from Sony...", col_warn);
+					pup = download_pup();
+				}
+				if (pup.empty())
+				{
+					set_status("Couldn't get the PS3 system software (no internet?). Games try without it.", col_err);
+					g_host.run_on_main([]() { after_firmware(); });
+					return;
+				}
+				ui_log.notice("Game Vault: installing the PS3 system software from %s", pup);
+				g_host.run_on_main([pup]() { start_firmware_install(pup); });
+			}).detach();
+		}
 	}
 
 	void init(const host_info& host)
@@ -2795,6 +2968,7 @@ namespace uwp_frontend
 		uwp_update::start([]() { g_data_serial++; });
 		std::lock_guard lock(g_link_mutex);
 		g_ready = true;
+		auto_firmware(); // before the link's game, which then waits for it
 		if (!g_link_path.empty())
 			run_link_boot(std::exchange(g_link_path, {}));
 	}
@@ -2879,6 +3053,12 @@ namespace uwp_frontend
 		{
 			if (!Emu.IsStopped(true))
 				return; // a restart booted the game again
+			// a game Game Vault started: back to Game Vault (the app stays in the background for the next one)
+			if (!g_back_link.empty())
+			{
+				ui_log.notice("Game Vault: the game ended, back to %s", g_back_link);
+				uwp_xaml::open_link(std::exchange(g_back_link, {}));
+			}
 			if (fs::file f{global_config_path()})
 			{
 				if (g_cfg.from_string(f.to_string()))

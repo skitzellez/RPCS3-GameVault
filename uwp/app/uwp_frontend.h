@@ -36,7 +36,8 @@ namespace uwp_frontend
 	// (picks built-in libraries when no firmware is installed). Returns false on failure.
 	bool boot(const std::string& path);
 	// Game Vault: a game sent with the gamevault-rpcs3: link. Boots it once the menu is ready (at once if it is).
-	void boot_from_link(const std::string& path);
+	// back_link: opened when that game ends (Game Vault's launchOnExit), empty for none.
+	void boot_from_link(const std::string& path, const std::string& back_link);
 
 	// UI thread, once per frame. Polls the gamepad (and keyboard through the CoreWindow).
 	// Returns true while the menu is shown; then `pixels` is the canvas_width x canvas_height

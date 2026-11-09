@@ -17,6 +17,9 @@ struct IDXGISwapChain1;
 
 namespace uwp_xaml
 {
+	// Game Vault: open a link (Windows.System.Launcher), e.g. back to Game Vault when a game it started ends.
+	void open_link(const std::string& url);
+
 	// What the shell wants shown over the menu; polled on every UI tick (UI thread).
 	struct overlay_state
 	{

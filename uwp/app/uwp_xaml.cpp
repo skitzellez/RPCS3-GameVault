@@ -69,10 +69,35 @@ namespace uwp_xaml
 			virtual HRESULT STDMETHODCALLTYPE get_Uri(IUriRuntimeClass** value) = 0;
 		};
 		constexpr GUID IID_IProtocolActivatedEventArgs{0x6095f4dd, 0xb7c0, 0x46ab, {0x81, 0xfe, 0xd9, 0x0f, 0x36, 0xd0, 0x0d, 0x24}};
+		// {44a9796f-723e-4fdf-a218-033e75b0c084} Windows.Foundation.IUriRuntimeClassFactory
+		struct IUriRuntimeClassFactory : IInspectable
+		{
+			virtual HRESULT STDMETHODCALLTYPE CreateUri(HSTRING uri, IUriRuntimeClass** instance) = 0;
+		};
+		constexpr GUID IID_IUriRuntimeClassFactory{0x44a9796f, 0x723e, 0x4fdf, {0xa2, 0x18, 0x03, 0x3e, 0x75, 0xb0, 0xc0, 0x84}};
+		// {277151c3-9e3e-42f6-91a4-5dfdeb232451} Windows.System.ILauncherStatics, up to LaunchUriAsync
+		struct ILauncherStatics : IInspectable
+		{
+			virtual HRESULT STDMETHODCALLTYPE LaunchFileAsync(IInspectable* file, IInspectable** operation) = 0;
+			virtual HRESULT STDMETHODCALLTYPE LaunchFileWithOptionsAsync(IInspectable* file, IInspectable* options, IInspectable** operation) = 0;
+			virtual HRESULT STDMETHODCALLTYPE LaunchUriAsync(IUriRuntimeClass* uri, IInspectable** operation) = 0;
+		};
+		constexpr GUID IID_ILauncherStatics{0x277151c3, 0x9e3e, 0x42f6, {0x91, 0xa4, 0x5d, 0xfd, 0xeb, 0x23, 0x24, 0x51}};
+
+		// The launchOnExit= part of a Game Vault link (already %-decoded with the rest), empty when there is none.
+		std::string link_back(const std::string& text)
+		{
+			const usz quote = text.rfind('"');
+			const usz at = text.find("launchOnExit=", quote == std::string::npos ? 0 : quote);
+			if (at == std::string::npos)
+				return {};
+			const usz end = text.find('&', at + 13);
+			return text.substr(at + 13, end == std::string::npos ? std::string::npos : end - at - 13);
+		}
 
 		// The game in a Game Vault link: gamevault-rpcs3:?cmd=rpcs3 "<path>"&launchOnExit=... (the path %-escaped,
 		// like Game Vault's other emulator links). Empty when the link names none.
-		std::string link_game_path(std::string uri)
+		std::string link_decode(const std::string& uri)
 		{
 			std::string text;
 			for (size_t i = 0; i < uri.size(); i++)
@@ -86,6 +111,11 @@ namespace uwp_xaml
 				else
 					text += uri[i];
 			}
+			return text;
+		}
+
+		std::string link_game_path(const std::string& text)
+		{
 			const size_t open = text.find('"');
 			const size_t close = open == std::string::npos ? open : text.find('"', open + 1);
 			if (close == std::string::npos)
@@ -1921,9 +1951,10 @@ namespace uwp_xaml
 					const wchar_t* raw = WindowsGetStringRawBuffer(text, &len);
 					const std::string link = narrow(std::wstring_view(raw, len));
 					WindowsDeleteString(text);
-					const std::string path = link_game_path(link);
+					const std::string text = link_decode(link);
+					const std::string path = link_game_path(text);
 					xaml_log.notice("Game Vault link: %s -> '%s'", link, path);
-					uwp_frontend::boot_from_link(path);
+					uwp_frontend::boot_from_link(path, link_back(text));
 				}
 				return launch();
 			}
@@ -2190,5 +2221,33 @@ namespace uwp_xaml
 	void request_pause_menu()
 	{
 		g_pause_requested = true;
+	}
+
+	void open_link(const std::string& url)
+	{
+		std::wstring wide(url.size() + 1, L'\0');
+		wide.resize(MultiByteToWideChar(CP_UTF8, 0, url.data(), static_cast<int>(url.size()), wide.data(), static_cast<int>(wide.size())));
+		HSTRING uri_class = nullptr, launcher_class = nullptr, text = nullptr;
+		IUriRuntimeClassFactory* uris = nullptr;
+		ILauncherStatics* launcher = nullptr;
+		IUriRuntimeClass* uri = nullptr;
+		IInspectable* operation = nullptr;
+		WindowsCreateString(L"Windows.Foundation.Uri", 22, &uri_class);
+		WindowsCreateString(L"Windows.System.Launcher", 23, &launcher_class);
+		WindowsCreateString(wide.c_str(), static_cast<UINT32>(wide.size()), &text);
+		HRESULT hr = RoGetActivationFactory(uri_class, IID_IUriRuntimeClassFactory, reinterpret_cast<void**>(&uris));
+		if (SUCCEEDED(hr))
+			hr = uris->CreateUri(text, &uri);
+		if (SUCCEEDED(hr))
+			hr = RoGetActivationFactory(launcher_class, IID_ILauncherStatics, reinterpret_cast<void**>(&launcher));
+		if (SUCCEEDED(hr))
+			hr = launcher->LaunchUriAsync(uri, &operation); // it carries on by itself
+		xaml_log.notice("Game Vault: open %s: 0x%08x", url, static_cast<u32>(hr));
+		for (IUnknown* p : {static_cast<IUnknown*>(operation), static_cast<IUnknown*>(uri), static_cast<IUnknown*>(launcher), static_cast<IUnknown*>(uris)})
+			if (p)
+				p->Release();
+		WindowsDeleteString(text);
+		WindowsDeleteString(launcher_class);
+		WindowsDeleteString(uri_class);
 	}
 }

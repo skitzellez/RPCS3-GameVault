@@ -41,13 +41,13 @@ jobs:
         id: llvmkey
         run: echo "sha=$(git -C 3rdparty/llvm/llvm rev-parse HEAD)-$(sha256sum uwp/toolchain/build-llvm.sh uwp/toolchain/toolchain-uwp.cmake uwp/toolchain/zig-cc uwp/toolchain/zig-c++ | sha256sum | cut -c1-16)" >> $GITHUB_OUTPUT
 
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         id: llvmcache
         with:
           path: ${{ github.workspace }}/../llvm-install
           key: llvm-${{ steps.llvmkey.outputs.sha }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         id: ffcache
         with:
           path: ${{ github.workspace }}/../ffmpeg-install
@@ -60,12 +60,26 @@ jobs:
           uwp/toolchain/build-ffmpeg.sh ../ffmpeg-src ../ffmpeg-build ../ffmpeg-install
           rm -rf ../ffmpeg-build ../ffmpeg-src
 
+      - name: Save FFmpeg (at once, so a later failure doesn't lose it)
+        if: steps.ffcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/../ffmpeg-install
+          key: ${{ steps.ffcache.outputs.cache-primary-key }}
+
       - name: LLVM (about 2 h the first time, cached after)
         if: steps.llvmcache.outputs.cache-hit != 'true'
         run: |
           uwp/toolchain/build-llvm.sh ../llvm-build ../llvm-install
           rm -rf ../llvm-build ../llvm-build-native
           df -h /
+
+      - name: Save LLVM (at once, so a later failure doesn't lose 2 hours)
+        if: steps.llvmcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/../llvm-install
+          key: ${{ steps.llvmcache.outputs.cache-primary-key }}
 
       - name: Vulkan headers
         run: git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git ../Vulkan-Headers

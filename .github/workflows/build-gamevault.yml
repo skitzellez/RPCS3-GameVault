@@ -92,6 +92,8 @@ jobs:
             -DUSE_VULKAN=ON -DRPCS3_UWP_VULKAN_INCLUDE_DIR=$(realpath ../Vulkan-Headers/include) \
             -DWITH_LLVM=ON -DBUILD_LLVM=OFF -DSTATIC_LINK_LLVM=ON -DLLVM_DIR=$(realpath ../llvm-install/lib/cmake/llvm) \
             -DUSE_NATIVE_INSTRUCTIONS=OFF -DUSE_PRECOMPILED_HEADERS=OFF -DUSE_LTO=ON \
+            -DCMAKE_C_COMPILER_AR=$PWD/uwp/toolchain/zig-ar -DCMAKE_CXX_COMPILER_AR=$PWD/uwp/toolchain/zig-ar \
+            -DCMAKE_C_COMPILER_RANLIB=$PWD/uwp/toolchain/zig-ranlib -DCMAKE_CXX_COMPILER_RANLIB=$PWD/uwp/toolchain/zig-ranlib \
             -DUSE_SDL=OFF -DUSE_FAUDIO=OFF -DUSE_SYSTEM_ZLIB=OFF -DUSE_SYSTEM_CURL=OFF -DUSE_SYSTEM_SDL=OFF \
             -DUSE_DISCORD_RPC=OFF -DUSE_GAMEMODE=OFF -DUSE_LIBEVDEV=OFF
           ninja -C ../build-uwp rpcs3_uwp rpcs3_uwp_importcheck

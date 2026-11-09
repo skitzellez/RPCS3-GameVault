@@ -1,0 +1,114 @@
+# Copyright (c) 2026 Skitzelles - part of Game Vault, https://github.com/skitzellez/xbox-game-vault
+# Builds RPCS3 for Game Vault (this fork of emelin2004/rpcs3-xbox) on a Linux runner, following uwp/README.md:
+# FFmpeg and LLVM with Zig (both cached), RPCS3, Mesa Dozen; uploads the unsigned package folder. It is packed and
+# signed on the Game Vault PC (makeappx + signtool), so no signing key ever reaches GitHub.
+name: Build RPCS3 for Game Vault
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [gamevault]
+    paths-ignore: ['**.md']
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      MESA_VERSION: 26.2.5
+      FFMPEG_TAG: n8.1
+      DXC_VERSION: 1.8.2505.32
+    steps:
+      - name: Free disk space (the runner keeps ~14 GB free; LLVM and RPCS3 need more)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build nasm clang lld llvm-18 llvm-18-tools meson pkg-config python3-mako python3-yaml python3-packaging bison flex glslang-tools
+          for t in dlltool windres nm strip ar ranlib; do sudo ln -sf /usr/bin/llvm-$t-18 /usr/local/bin/llvm-$t; done
+          pip install --break-system-packages ziglang==0.17.1
+          python3 -m ziglang version
+
+      - name: LLVM cache key
+        id: llvmkey
+        run: echo "sha=$(git -C 3rdparty/llvm/llvm rev-parse HEAD)-$(sha256sum uwp/toolchain/build-llvm.sh uwp/toolchain/toolchain-uwp.cmake uwp/toolchain/zig-cc uwp/toolchain/zig-c++ | sha256sum | cut -c1-16)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        id: llvmcache
+        with:
+          path: ${{ github.workspace }}/../llvm-install
+          key: llvm-${{ steps.llvmkey.outputs.sha }}
+
+      - uses: actions/cache@v4
+        id: ffcache
+        with:
+          path: ${{ github.workspace }}/../ffmpeg-install
+          key: ffmpeg-${{ env.FFMPEG_TAG }}-${{ hashFiles('uwp/toolchain/build-ffmpeg.sh', 'uwp/toolchain/zig-cc-ffmpeg') }}
+
+      - name: FFmpeg
+        if: steps.ffcache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch $FFMPEG_TAG https://github.com/FFmpeg/FFmpeg.git ../ffmpeg-src
+          uwp/toolchain/build-ffmpeg.sh ../ffmpeg-src ../ffmpeg-build ../ffmpeg-install
+          rm -rf ../ffmpeg-build ../ffmpeg-src
+
+      - name: LLVM (about 2 h the first time, cached after)
+        if: steps.llvmcache.outputs.cache-hit != 'true'
+        run: |
+          uwp/toolchain/build-llvm.sh ../llvm-build ../llvm-install
+          rm -rf ../llvm-build ../llvm-build-native
+          df -h /
+
+      - name: Vulkan headers
+        run: git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git ../Vulkan-Headers
+
+      - name: RPCS3
+        run: |
+          cmake -S . -B ../build-uwp -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE=uwp/toolchain/toolchain-uwp.cmake -DCMAKE_BUILD_TYPE=Release \
+            -DRPCS3_UWP=ON -DRPCS3_UWP_FFMPEG_LIB_DIR=$(realpath ../ffmpeg-install/lib) \
+            -DUSE_VULKAN=ON -DRPCS3_UWP_VULKAN_INCLUDE_DIR=$(realpath ../Vulkan-Headers/include) \
+            -DWITH_LLVM=ON -DBUILD_LLVM=OFF -DSTATIC_LINK_LLVM=ON -DLLVM_DIR=$(realpath ../llvm-install/lib/cmake/llvm) \
+            -DUSE_NATIVE_INSTRUCTIONS=OFF -DUSE_PRECOMPILED_HEADERS=OFF -DUSE_LTO=ON \
+            -DUSE_SDL=OFF -DUSE_FAUDIO=OFF -DUSE_SYSTEM_ZLIB=OFF -DUSE_SYSTEM_CURL=OFF -DUSE_SYSTEM_SDL=OFF \
+            -DUSE_DISCORD_RPC=OFF -DUSE_GAMEMODE=OFF -DUSE_LIBEVDEV=OFF
+          ninja -C ../build-uwp rpcs3_uwp rpcs3_uwp_importcheck
+          df -h /
+
+      - name: Mesa Dozen (vulkan_dzn.dll)
+        run: |
+          curl -sL https://archive.mesa3d.org/mesa-$MESA_VERSION.tar.xz | tar xJ -C ..
+          git -C ../mesa-$MESA_VERSION init -q && git -C ../mesa-$MESA_VERSION add -A >/dev/null && git -C ../mesa-$MESA_VERSION -c user.name=ci -c user.email=ci@ci commit -qm base
+          # the cross file names his paths; point it at this checkout and build dir
+          sed -i "s#/home/claude/RPCS3/rpcs3/uwp/toolchain#$PWD/uwp/toolchain#g; s#/home/claude/uwp-port/build#$(realpath ../build-uwp)#g" uwp/toolchain/meson-cross-uwp.ini
+          uwp/toolchain/build-mesa-dzn.sh ../mesa-$MESA_VERSION ../build-dzn
+
+      - name: DXIL signer (Microsoft.Direct3D.DXC)
+        run: |
+          curl -sL -o ../dxc.zip https://www.nuget.org/api/v2/package/Microsoft.Direct3D.DXC/$DXC_VERSION
+          mkdir -p ../dxc && cd ../dxc && unzip -q ../dxc.zip
+          find . -iname 'dxil.dll' -path '*x64*' | head -1 | xargs -I{} cp {} ../dxil.dll
+          find . -iname 'dxcompiler.dll' -path '*x64*' | head -1 | xargs -I{} cp {} ../dxcompiler.dll
+          (find . -iname 'LICENSE-MS.txt' -o -iname 'LICENSE*.txt' | head -1 | xargs -I{} cp {} ../DXIL-LICENSE.txt) || true
+          ls -la ../dxil.dll ../dxcompiler.dll
+
+      - name: Package folder (unsigned)
+        run: |
+          export UWP_EXTRA_FILES=$(realpath ../build-dzn/src/microsoft/vulkan/vulkan_dzn.dll):$(realpath ../dxil.dll):$(realpath ../dxcompiler.dll):$(realpath ../DXIL-LICENSE.txt)
+          python3 uwp/package/make_layout.py ../build-uwp/bin/rpcs3_uwp.exe . ../appx-layout
+          cp LICENSE ../appx-layout/RPCS3-LICENSE.txt
+          ls -la ../appx-layout
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpcs3-gamevault-layout
+          path: ${{ github.workspace }}/../appx-layout
+          retention-days: 14

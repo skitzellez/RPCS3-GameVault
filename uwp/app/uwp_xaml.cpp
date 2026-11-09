@@ -56,6 +56,43 @@ namespace uwp_xaml
 		};
 		constexpr GUID IID_IBufferByteAccess{0x905a0fef, 0xbc53, 0x11df, {0x8c, 0x49, 0x00, 0x1e, 0x4f, 0xc6, 0x86, 0xda}};
 
+		// Game Vault: the gamevault-rpcs3: link (windows.applicationmodel.activation.h / windows.foundation.h).
+		// {9e365e57-48b2-4160-956f-c7385120bbfc} Windows.Foundation.IUriRuntimeClass, only its first method used
+		struct IUriRuntimeClass : IInspectable
+		{
+			virtual HRESULT STDMETHODCALLTYPE get_AbsoluteUri(HSTRING* value) = 0;
+		};
+		constexpr GUID IID_IUriRuntimeClass{0x9e365e57, 0x48b2, 0x4160, {0x95, 0x6f, 0xc7, 0x38, 0x51, 0x20, 0xbb, 0xfc}};
+		// {6095f4dd-b7c0-46ab-81fe-d90f36d00d24} Windows.ApplicationModel.Activation.IProtocolActivatedEventArgs
+		struct IProtocolActivatedEventArgs : IInspectable
+		{
+			virtual HRESULT STDMETHODCALLTYPE get_Uri(IUriRuntimeClass** value) = 0;
+		};
+		constexpr GUID IID_IProtocolActivatedEventArgs{0x6095f4dd, 0xb7c0, 0x46ab, {0x81, 0xfe, 0xd9, 0x0f, 0x36, 0xd0, 0x0d, 0x24}};
+
+		// The game in a Game Vault link: gamevault-rpcs3:?cmd=rpcs3 "<path>"&launchOnExit=... (the path %-escaped,
+		// like Game Vault's other emulator links). Empty when the link names none.
+		std::string link_game_path(std::string uri)
+		{
+			std::string text;
+			for (size_t i = 0; i < uri.size(); i++)
+			{
+				const auto hex = [](char c) { return c >= '0' && c <= '9' ? c - '0' : (c | 0x20) >= 'a' && (c | 0x20) <= 'f' ? (c | 0x20) - 'a' + 10 : -1; };
+				if (uri[i] == '%' && i + 2 < uri.size() && hex(uri[i + 1]) >= 0 && hex(uri[i + 2]) >= 0)
+				{
+					text += static_cast<char>(hex(uri[i + 1]) * 16 + hex(uri[i + 2]));
+					i += 2;
+				}
+				else
+					text += uri[i];
+			}
+			const size_t open = text.find('"');
+			const size_t close = open == std::string::npos ? open : text.find('"', open + 1);
+			if (close == std::string::npos)
+				return {};
+			return text.substr(open + 1, close - open - 1);
+		}
+
 		// Windows.UI.Xaml.Markup.IXamlMetadataProvider with its whole signature (the generated header can't
 		// express the array that GetXmlnsDefinitions returns). XAML asks the Application for it to resolve
 		// the types that aren't Windows.UI.Xaml's own: here those of WinUI 2 (Microsoft.UI.Xaml).
@@ -1871,7 +1908,25 @@ namespace uwp_xaml
 				return S_OK;
 			}
 
-			HRESULT STDMETHODCALLTYPE OnActivated(IInspectable*) override { return S_OK; }
+			// Game Vault's gamevault-rpcs3: link starts the app (or comes to it while it runs) with the game to boot.
+			HRESULT STDMETHODCALLTYPE OnActivated(IInspectable* args) override
+			{
+				com<IProtocolActivatedEventArgs> protocol;
+				com<IUriRuntimeClass> uri;
+				HSTRING text = nullptr;
+				if (args && SUCCEEDED(args->QueryInterface(IID_IProtocolActivatedEventArgs, reinterpret_cast<void**>(protocol.put()))) && protocol &&
+					SUCCEEDED(protocol->get_Uri(uri.put())) && uri && SUCCEEDED(uri->get_AbsoluteUri(&text)))
+				{
+					UINT32 len = 0;
+					const wchar_t* raw = WindowsGetStringRawBuffer(text, &len);
+					const std::string link = narrow(std::wstring_view(raw, len));
+					WindowsDeleteString(text);
+					const std::string path = link_game_path(link);
+					xaml_log.notice("Game Vault link: %s -> '%s'", link, path);
+					uwp_frontend::boot_from_link(path);
+				}
+				return launch();
+			}
 			HRESULT STDMETHODCALLTYPE OnLaunched(IInspectable*) override { return launch(); }
 			HRESULT STDMETHODCALLTYPE OnFileActivated(void*) override { return S_OK; }
 			HRESULT STDMETHODCALLTYPE OnSearchActivated(IInspectable*) override { return S_OK; }

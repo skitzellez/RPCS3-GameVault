@@ -3,11 +3,12 @@
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
          xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
          IgnorableNamespaces="uap rescap">
-  <!-- Publisher must match the signing certificate (the probe's test certificate). -->
-  <Identity Name="RPCS3Xbox" Publisher="CN=RPCS3XboxProbe" Version="0.1.35.16" ProcessorArchitecture="x64" />
+  <!-- RPCS3 for Game Vault: a fork of RPCS3 for Xbox by emelin2004 (GPL-2), its own app so it installs beside the
+       original. Publisher must match the Game Vault signing certificate. -->
+  <Identity Name="GamerDad.RPCS3ForGameVault" Publisher="CN=GamerDad" Version="0.1.35.1600" ProcessorArchitecture="x64" />
   <Properties>
-    <DisplayName>RPCS3 Xbox (Beta)</DisplayName>
-    <PublisherDisplayName>RPCS3 Xbox port project</PublisherDisplayName>
+    <DisplayName>RPCS3 for Game Vault</DisplayName>
+    <PublisherDisplayName>Skitzelles (Game Vault), from RPCS3 for Xbox by emelin2004</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   <Dependencies>
@@ -22,14 +23,22 @@
   </Resources>
   <Applications>
     <Application Id="App" Executable="rpcs3_uwp.exe" EntryPoint="RPCS3Xbox.App">
-      <uap:VisualElements DisplayName="RPCS3 Xbox (Beta)" Description="RPCS3 PS3 emulator, Xbox UWP port beta build"
+      <uap:VisualElements DisplayName="RPCS3 for Game Vault" Description="PlayStation 3 for Game Vault: RPCS3 for Xbox (emelin2004) with Game Vault's launch link"
                           BackgroundColor="#1A1A1F" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png">
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
+      <Extensions>
+        <!-- Game Vault starts a game with gamevault-rpcs3:?cmd=rpcs3 "<game path>"&launchOnExit=<link back> -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="gamevault-rpcs3">
+            <uap:DisplayName>RPCS3 for Game Vault</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+      </Extensions>
     </Application>
     <Application Id="ImportCheck" Executable="rpcs3_uwp_importcheck.exe" EntryPoint="RPCS3Xbox.ImportCheck">
-      <uap:VisualElements DisplayName="RPCS3 Xbox import check" Description="Lists the system functions the emulator needs that this device is missing"
+      <uap:VisualElements DisplayName="RPCS3 for Game Vault import check" Description="Lists the system functions the emulator needs that this device is missing"
                           BackgroundColor="#1A1A1F" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" />
     </Application>
   </Applications>

@@ -955,7 +955,10 @@ namespace uwp_telemetry
 		}
 
 		const std::string state = fs::file{local_dir + "telemetry"} ? trim(fs::file{local_dir + "telemetry"}.to_string()) : std::string();
-		g_consent = state == "on" ? consent::yes : state == "off" ? consent::no : consent::unknown;
+		// RPCS3 for Game Vault: never sends logs to the RPCS3 for Xbox developer's server (a different app; Game Vault
+		// has its own reports) and never asks. The original app keeps its question.
+		g_consent = consent::no;
+		(void)state;
 		g_cfg_tel.enabled.from_string(g_consent == consent::yes ? "true" : "false");
 		rsx::g_uwp_perf_sink = on_perf;
 		tel_log.notice("Anonymous ID %s, sending %s", g_install_id, g_consent == consent::yes ? "on" : g_consent == consent::no ? "off" : "not asked yet");

@@ -2740,6 +2740,40 @@ namespace uwp_frontend
 		}
 	}
 
+	// Game Vault: the game its link named, kept until init() has finished (the link can come before the menu is ready).
+	std::mutex g_link_mutex;
+	std::string g_link_path;
+
+	void run_link_boot(const std::string& path)
+	{
+		ui_log.notice("Game Vault: starting '%s' from the link", path);
+		fs::write_file(last_game_file(), fs::rewrite, path);
+		set_status("Starting the game...", col_dim);
+		g_host.run_on_main([path]()
+		{
+			if (!Emu.IsStopped(true))
+			{
+				ui_log.warning("Game Vault: not starting '%s': a game is still running", path);
+				return;
+			}
+			if (!boot(path))
+				g_in_game = false;
+		});
+	}
+
+	void boot_from_link(const std::string& path)
+	{
+		if (path.empty())
+			return;
+		std::lock_guard lock(g_link_mutex);
+		if (!g_ready)
+		{
+			g_link_path = path;
+			return;
+		}
+		run_link_boot(path);
+	}
+
 	void init(const host_info& host)
 	{
 		g_host = host;
@@ -2759,7 +2793,10 @@ namespace uwp_frontend
 			rescan();
 		// Is a newer release on GitHub? The header shows the answer.
 		uwp_update::start([]() { g_data_serial++; });
+		std::lock_guard lock(g_link_mutex);
 		g_ready = true;
+		if (!g_link_path.empty())
+			run_link_boot(std::exchange(g_link_path, {}));
 	}
 
 	bool boot(const std::string& path)

@@ -140,6 +140,11 @@ namespace uwp_update
 
 	void start(std::function<void()> on_done)
 	{
+		// RPCS3 for Game Vault is updated through Game Vault: no check against RPCS3 for Xbox's releases.
+		upd_log.notice("Update check: off (RPCS3 for Game Vault updates through Game Vault)");
+		if (on_done)
+			on_done();
+		return;
 		auto* args = new start_args{std::move(on_done)};
 		// TLS needs more than the default stack (as the telemetry upload thread).
 		if (const HANDLE h = CreateThread(nullptr, 2 * 1024 * 1024, check_thread, args, 0, nullptr))

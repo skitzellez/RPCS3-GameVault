@@ -2754,6 +2754,7 @@ namespace uwp_frontend
 	// Game Vault: the game its link named, kept until init() has finished (the link can come before the menu is ready).
 	std::mutex g_link_mutex;
 	std::string g_link_path;
+	std::string g_link_back; // with g_link_path: the way back of a link that came before the menu was ready
 	std::string g_back_link; // main thread: Game Vault's link, opened when the game it started ends
 
 	void run_link_boot(const std::string& path)
@@ -2783,13 +2784,16 @@ namespace uwp_frontend
 	{
 		if (path.empty())
 			return;
-		g_host.run_on_main([back_link]() { g_back_link = back_link; });
 		std::lock_guard lock(g_link_mutex);
-		if (!g_ready)
+		// The link that starts the app comes before the app is set up (run_on_main is still empty then and calling
+		// it ended the app at once): keep the game and its way back until the menu is ready.
+		if (!g_ready || !g_host.run_on_main)
 		{
 			g_link_path = path;
+			g_link_back = back_link;
 			return;
 		}
+		g_host.run_on_main([back_link]() { g_back_link = back_link; });
 		run_link_boot(path);
 	}
 
@@ -2971,7 +2975,10 @@ namespace uwp_frontend
 		g_ready = true;
 		auto_firmware(); // before the link's game, which then waits for it
 		if (!g_link_path.empty())
+		{
+			g_host.run_on_main([back = std::exchange(g_link_back, {})]() { g_back_link = back; });
 			run_link_boot(std::exchange(g_link_path, {}));
+		}
 	}
 
 	bool boot(const std::string& path)

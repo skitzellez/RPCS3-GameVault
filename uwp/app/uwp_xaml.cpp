@@ -1941,6 +1941,8 @@ namespace uwp_xaml
 			// Game Vault's gamevault-rpcs3: link starts the app (or comes to it while it runs) with the game to boot.
 			HRESULT STDMETHODCALLTYPE OnActivated(IInspectable* args) override
 			{
+				// the window and the menu first; the game waits until the menu is ready (boot_from_link)
+				const HRESULT hr = launch();
 				com<IProtocolActivatedEventArgs> protocol;
 				com<IUriRuntimeClass> uri;
 				HSTRING text = nullptr;
@@ -1956,7 +1958,7 @@ namespace uwp_xaml
 					xaml_log.notice("Game Vault link: %s -> '%s'", link, path);
 					uwp_frontend::boot_from_link(path, link_back(text));
 				}
-				return launch();
+				return hr;
 			}
 			HRESULT STDMETHODCALLTYPE OnLaunched(IInspectable*) override { return launch(); }
 			HRESULT STDMETHODCALLTYPE OnFileActivated(void*) override { return S_OK; }

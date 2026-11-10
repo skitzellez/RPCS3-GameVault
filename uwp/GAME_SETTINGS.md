@@ -13,7 +13,7 @@ again. A setting marked "config file only" isn't in that menu yet, so it goes in
 | --- | --- | --- | --- | --- |
 | Mortal Kombat Komplete Edition | BLUS30902 | CPU: SPU block size: Safe | Stops with "SPU ... Compilation failed" while the first fight loads ([#80](https://github.com/emelin2004/rpcs3-xbox/issues/80)) | Series S, 0.1.35.11, firmware 4.93: menus 54–60 fps, fights 24–30 fps (SPU-bound) |
 | Portal 2 | BLUS30732, BLES01222 | CPU: SPU block size: Safe, SPU loop detection: on; `Max SPURS Threads: 4` (config file only) | 22 fps instead of 27 in a big test chamber, with slow frames | Built into the app (`uwp_main.cpp`) |
-| Blur | BLUS30295, BLES00759, BLJM60244 | CPU: SPU block size: Safe, SPU loop detection: on; GPU: Write Color Buffers: on | Black screen after the intro (no Write Color Buffers); endless loading spinner after it (SPU blocks Mega) | Built into RPCS3 for Game Vault (`uwp_main.cpp`); Series X, firmware 4.93 |
+| Blur | BLUS30295, BLES00759, BLJM60244 | CPU: SPU block size: Safe, SPU loop detection: on; `Max SPURS Threads: 4`; GPU: Write Color Buffers: on | No picture (no Write Color Buffers); endless loading spinner after the intro (SPU blocks Mega); menus 10-13 fps instead of 22-27 (6 SPURS threads). The first race can still run out of memory while it loads | Built into RPCS3 for Game Vault (`uwp_main.cpp`); Series X, firmware 4.93 |
 | Minecraft: PlayStation 3 Edition | BLES01976, BLUS31426, NPEB01899, NPUB31419 | Network: Network: Disconnected | With the network connected and no PSN, a new world stays on "Finalizing" | Built into the app (`uwp_main.cpp`) |
 
 Portal 2 and Minecraft already get these settings automatically from the app's built-in game

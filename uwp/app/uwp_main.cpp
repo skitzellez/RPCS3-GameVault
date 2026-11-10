@@ -806,10 +806,12 @@ namespace
 				// Write Color Buffers is on (RPCS3 wiki/forums; on the Xbox 2026-11-09, BLUS30295: black at ~5 min
 				// without it, loads with it). With SPU blocks Mega (the app's default) it then loads forever after
 				// the intro (SPUs ~95%, no file read for 8 min); Safe + loop detection reaches the menus, the car
-				// choice and the races. Its speed is SPU-bound (all 6 SPUs ~100%).
-				{"BLUS30295", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\nVideo:\n  Write Color Buffers: true\n"},
-				{"BLES00759", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\nVideo:\n  Write Color Buffers: true\n"},
-				{"BLJM60244", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\nVideo:\n  Write Color Buffers: true\n"},
+				// choice and the races. Its speed is SPU-bound (all 6 SPUs ~100%): 4 SPURS threads take the menus
+				// from 10-13 to 22-27 fps. Without Write Color Buffers (with Safe blocks) no frame is ever shown.
+				// Still open: the first race can run out of the 5 GB while it loads (4.7 GB committed).
+				{"BLUS30295", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\n  Max SPURS Threads: 4\nVideo:\n  Write Color Buffers: true\n"},
+				{"BLES00759", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\n  Max SPURS Threads: 4\nVideo:\n  Write Color Buffers: true\n"},
+				{"BLJM60244", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\n  Max SPURS Threads: 4\nVideo:\n  Write Color Buffers: true\n"},
 			};
 
 			for (const auto& game : s_games)

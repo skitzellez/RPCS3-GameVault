@@ -2230,6 +2230,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 {
 	RoInitialize(RO_INIT_MULTITHREADED);
 
+	// Game Vault: a marker that start-up got past the static address-space reservations (vm.cpp), before any log
+	fs::write_file(get_local_state_dir() + "started.txt", fs::rewrite, std::string("wWinMain reached\n"));
+
 	// The menu is XAML. An empty LocalState/legacy_ui file selects the software-drawn menu of the
 	// earlier builds instead (a way back while the XAML shell is new on the console).
 	if (!fs::is_file(get_local_state_dir() + "legacy_ui"))

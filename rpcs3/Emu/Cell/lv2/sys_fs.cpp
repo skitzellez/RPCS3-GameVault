@@ -3637,6 +3637,16 @@ error_code sys_fs_utime(ppu_thread& ppu, vm::cptr<char> path, vm::cptr<CellFsUti
 				return { CELL_ENOTDIR, path };
 			}
 
+#ifdef RPCS3_UWP
+			// RPCS3 for Game Vault: a file's date the Xbox won't let us change (a folder on a USB drive) is not
+			// worth stopping the game over: it never decides whether a game runs
+			if (error == fs::error::acces)
+			{
+				sys_fs.warning("sys_fs_utime(): the date of %s could not be set (access denied), going on", path);
+				return CELL_OK;
+			}
+#endif
+
 			fmt::throw_exception("unknown error %s", error);
 		}
 		}

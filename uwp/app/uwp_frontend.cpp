@@ -2998,10 +2998,11 @@ namespace uwp_frontend
 		{
 			ui_log.error("UWP: not booting '%s': the app may use only %.2f GB (App mode)", path, limit / 1073741824.0);
 			set_status("Set the app type to Game to play", col_err);
-			post_modal("App type is set to App",
-				fmt::format("The Xbox gives this app only %.1f GB of memory, so games can't run. On the Xbox Home screen, "
-					"highlight RPCS3, press the Menu button, choose \"Manage game and add-ons\" or \"View details\", "
-					"and set App type to Game. Then start the app again.", limit / 1073741824.0));
+			// Game Vault: one short fix for players who installed it with a phone (the PC setup sets Game by itself)
+			post_modal("One quick setting first",
+				fmt::format("PS3 games need App type Game (this app now gets only %.1f GB).\n"
+					"In Dev Home: highlight \"RPCS3 for Game Vault\", press View, choose View details, set App type to Game.\n"
+					"Then start the game again from Game Vault.", limit / 1073741824.0));
 			return false;
 		}
 

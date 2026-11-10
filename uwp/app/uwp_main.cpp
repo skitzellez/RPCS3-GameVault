@@ -785,7 +785,7 @@ namespace
 		g_emu_callbacks.make_video_source = []() -> std::unique_ptr<video_source> { return nullptr; };
 		g_emu_callbacks.enable_gamemode = [](bool) {};
 		// Built-in settings for single games, applied unless the game has its own custom config
-		// (LocalState/rpcs3/config/custom_configs/config_<serial>.yml, which test runs use for A/B).
+		// (LocalState/rpcs3/custom_configs/config_<serial>.yml, which test runs use for A/B).
 		g_emu_callbacks.get_database_config = [](const std::string& title_id) -> std::string
 		{
 			struct game_config { std::string_view title_id, why, yaml; };
@@ -802,6 +802,12 @@ namespace
 				{"BLUS31426", "Minecraft", "Net:\n  Internet enabled: Disconnected\n"},
 				{"NPEB01899", "Minecraft", "Net:\n  Internet enabled: Disconnected\n"},
 				{"NPUB31419", "Minecraft", "Net:\n  Internet enabled: Disconnected\n"},
+				// RPCS3 for Game Vault: Blur sits on a black screen after the intro (as the race data loads) until
+				// Write Color Buffers is on (RPCS3 wiki/forums; on the Xbox 2026-11-09, BLUS30295: black at ~5 min
+				// without it, loads with it). Its speed is SPU-bound (all 6 SPUs ~100% in the intro video).
+				{"BLUS30295", "Blur", "Video:\n  Write Color Buffers: true\n"},
+				{"BLES00759", "Blur", "Video:\n  Write Color Buffers: true\n"},
+				{"BLJM60244", "Blur", "Video:\n  Write Color Buffers: true\n"},
 			};
 
 			for (const auto& game : s_games)

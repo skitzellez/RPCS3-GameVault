@@ -655,9 +655,12 @@ namespace uwp_netgame
 		const u64 start = GetTickCount64();
 		if (!dev->connect())
 			return fail(fmt::format("could not connect to %s\\%s", server, share));
+		// the game itself must be there: the .iso, or the game folder (a game at the top of the share has no folder
+		// of its own, and libsmb2 has no name for the share's top: stat "." failed for every .iso there)
 		smb2_stat_64 st{};
-		if (!dev->stat_full(base.empty() ? std::string(".") : base, st))
-			return fail(fmt::format("%s is not on %s\\%s", base, server, share));
+		const std::string game = is_iso ? (base.empty() ? leaf : base + "\\" + leaf) : base;
+		if (!game.empty() && !dev->stat_full(game, st))
+			return fail(fmt::format("%s is not on %s\\%s", game, server, share));
 
 		{
 			std::lock_guard lock(g_device_mutex);

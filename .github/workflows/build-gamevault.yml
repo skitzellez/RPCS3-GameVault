@@ -44,13 +44,13 @@ jobs:
       - uses: actions/cache/restore@v4
         id: llvmcache
         with:
-          path: ${{ github.workspace }}/../llvm-install
+          path: /home/runner/work/RPCS3-GameVault/llvm-install
           key: llvm-${{ steps.llvmkey.outputs.sha }}
 
       - uses: actions/cache/restore@v4
         id: ffcache
         with:
-          path: ${{ github.workspace }}/../ffmpeg-install
+          path: /home/runner/work/RPCS3-GameVault/ffmpeg-install
           key: ffmpeg-${{ env.FFMPEG_TAG }}-${{ hashFiles('uwp/toolchain/build-ffmpeg.sh', 'uwp/toolchain/zig-cc-ffmpeg') }}
 
       - name: FFmpeg
@@ -64,7 +64,7 @@ jobs:
         if: steps.ffcache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: ${{ github.workspace }}/../ffmpeg-install
+          path: /home/runner/work/RPCS3-GameVault/ffmpeg-install
           key: ${{ steps.ffcache.outputs.cache-primary-key }}
 
       - name: LLVM (about 2 h the first time, cached after)
@@ -78,7 +78,7 @@ jobs:
         if: steps.llvmcache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: ${{ github.workspace }}/../llvm-install
+          path: /home/runner/work/RPCS3-GameVault/llvm-install
           key: ${{ steps.llvmcache.outputs.cache-primary-key }}
 
       - name: Vulkan headers
@@ -126,5 +126,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rpcs3-gamevault-layout
-          path: ${{ github.workspace }}/../appx-layout
+          path: /home/runner/work/RPCS3-GameVault/appx-layout
           retention-days: 14

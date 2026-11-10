@@ -4,6 +4,12 @@
 #include "vkutils/device.h"
 #include "vkutils/image.h"
 
+#include <map>
+#include <mutex>
+#include <optional>
+#include <set>
+#include <sstream>
+
 namespace vk
 {
 	VkFormat get_compatible_depth_surface_format(const gpu_formats_support& support, rsx::surface_depth_format2 format)
@@ -121,8 +127,73 @@ namespace vk
 	}
 
 
+#ifdef RPCS3_UWP
+	// RPCS3 for Game Vault: texture format investigation (Bleach's text). Each GCM texture format is logged the first
+	// time it is mapped; <config dir>/tex_remap.txt can override a format's channel map for tests, one line each:
+	// "0x83 RGBA" (hex GCM format without the LN/UN bits, then the ARGB map as 4 letters of R G B A 0 1).
+	static std::optional<std::array<VkComponentSwizzle, 4>> uwp_remap_override(u32 format)
+	{
+		static std::once_flag once;
+		static std::map<u32, std::array<VkComponentSwizzle, 4>> table;
+		std::call_once(once, []()
+		{
+			fs::file f(fs::get_config_dir() + "tex_remap.txt");
+			if (!f)
+				return;
+			std::istringstream lines(f.to_string());
+			for (std::string line; std::getline(lines, line);)
+			{
+				std::istringstream words(line);
+				std::string fmt_text, map;
+				if (!(words >> fmt_text >> map) || map.size() != 4)
+					continue;
+				const u32 fmt = static_cast<u32>(std::strtoul(fmt_text.c_str(), nullptr, 16));
+				std::array<VkComponentSwizzle, 4> m{};
+				bool ok = true;
+				for (int i = 0; i < 4; i++)
+				{
+					switch (map[i])
+					{
+					case 'R': m[i] = VK_COMPONENT_SWIZZLE_R; break;
+					case 'G': m[i] = VK_COMPONENT_SWIZZLE_G; break;
+					case 'B': m[i] = VK_COMPONENT_SWIZZLE_B; break;
+					case 'A': m[i] = VK_COMPONENT_SWIZZLE_A; break;
+					case '0': m[i] = VK_COMPONENT_SWIZZLE_ZERO; break;
+					case '1': m[i] = VK_COMPONENT_SWIZZLE_ONE; break;
+					default: ok = false;
+					}
+				}
+				if (ok)
+				{
+					table[fmt] = m;
+					rsx_log.warning("UWP: tex_remap.txt: format 0x%x mapped as %s", fmt, map);
+				}
+			}
+		});
+		if (const auto it = table.find(format); it != table.end())
+			return it->second;
+		return std::nullopt;
+	}
+
+	static void uwp_log_format_once(u32 format, const char* what, int value)
+	{
+		static std::mutex m;
+		static std::set<std::pair<u32, std::string>> seen;
+		std::lock_guard lock(m);
+		if (seen.emplace(format, what).second)
+			rsx_log.warning("UWP: texture format 0x%x: %s %d", format, what, value);
+	}
+#endif
+
 	std::array<VkComponentSwizzle, 4> get_component_mapping(u32 format)
 	{
+#ifdef RPCS3_UWP
+		if (const auto over = uwp_remap_override(format))
+		{
+			uwp_log_format_once(format, "remap overridden", 1);
+			return *over;
+		}
+#endif
 		//Component map in ARGB format
 		std::array<VkComponentSwizzle, 4> mapping = {};
 
@@ -194,11 +265,18 @@ namespace vk
 			fmt::throw_exception("Invalid or unsupported component mapping for texture format (0x%x)", format);
 		}
 
+#ifdef RPCS3_UWP
+		uwp_log_format_once(format, "ARGB map (1 zero 2 one 3 R 4 G 5 B 6 A; A R G B digits)",
+			static_cast<int>(mapping[0] * 1000 + mapping[1] * 100 + mapping[2] * 10 + mapping[3]));
+#endif
 		return mapping;
 	}
 
 	VkFormat get_compatible_sampler_format(const gpu_formats_support& support, u32 format)
 	{
+#ifdef RPCS3_UWP
+		uwp_log_format_once(format, "sampled (rgba4_unorm support)", support.rgba4_unorm ? 1 : 0);
+#endif
 		const bool supports_dxt = vk::get_current_renderer()->get_texture_compression_bc_support();
 		switch (format)
 		{

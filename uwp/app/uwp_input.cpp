@@ -317,6 +317,52 @@ namespace
 
 	press_script s_script;
 
+	// RPCS3 for Game Vault: live test presses. A LocalState/press_now file (dropped in through the Device Portal
+	// while a game runs) is read, deleted and pressed at once: one press per line, "<button>[+button] [hold ms]
+	// [seconds from now]", e.g. "circle", "lup 2000", "cross 150 1.5". A remote tester can steer a game step by step.
+	std::string s_live_file;
+	u64 s_live_checked = 0;
+	u32 button_from_name(const std::string& name);
+
+	void poll_live_presses() // caller holds the gamepads mutex
+	{
+		const u64 now = GetTickCount64();
+		if (s_live_file.empty() || now - s_live_checked < 250)
+			return;
+		s_live_checked = now;
+		if (!fs::is_file(s_live_file))
+			return;
+		std::string text;
+		if (fs::file f{s_live_file})
+			text = f.to_string();
+		fs::remove_file(s_live_file);
+		if (!s_script.base_ms)
+			s_script.base_ms = now;
+		const u64 t = now - s_script.base_ms;
+		std::stringstream lines(text);
+		for (std::string line; std::getline(lines, line);)
+		{
+			std::stringstream words(line.substr(0, line.find('#')));
+			std::string button;
+			if (!(words >> button))
+				continue;
+			u64 hold = 150;
+			double after = 0;
+			words >> hold >> after;
+			press p{};
+			p.buttons = button_from_name(button);
+			if (!p.buttons)
+			{
+				uwp_input_log.error("press_now: unknown button '%s'", button);
+				continue;
+			}
+			p.start_ms = p.end_ms = t + static_cast<u64>(std::max(after, 0.0) * 1000);
+			p.hold_ms = std::max<u64>(hold, 50);
+			s_script.presses.push_back(p);
+			uwp_input_log.notice("press_now: %s for %u ms at %.1f s", button, p.hold_ms, p.start_ms / 1000.0);
+		}
+	}
+
 	u32 button_from_name(const std::string& name)
 	{
 		static const std::pair<const char*, u32> names[]
@@ -380,6 +426,12 @@ namespace
 
 void uwp_input_load_script(const std::string& path)
 {
+	{
+		// live presses: press_now next to the autopress file
+		gamepads& pads = get_gamepads();
+		std::lock_guard lock(pads.mutex);
+		s_live_file = path.substr(0, path.find_last_of("/\\") + 1) + "press_now";
+	}
 	fs::file f(path);
 	if (!f)
 		return;
@@ -435,6 +487,8 @@ DWORD WINAPI uwp_xinput_get_state(DWORD user_index, XINPUT_STATE* state)
 	std::lock_guard lock(pads.mutex);
 
 	IGamepad* pad = pads.get(user_index);
+	if (user_index == 0)
+		poll_live_presses();
 	if (user_index == 0 && state && !s_script.presses.empty())
 	{
 		// Scripted presses on controller 1, merged with the real controller if one is there.

@@ -304,7 +304,7 @@ namespace
 		u64 end_ms;   // repeat: last start time; single press: same as start_ms
 		u64 period_ms; // 0 = single press
 		u64 hold_ms;
-		WORD buttons;
+		u32 buttons; // XInput buttons in the low 16 bits; the sticks above (see button_from_name)
 	};
 
 	struct press_script
@@ -312,14 +312,14 @@ namespace
 		std::vector<press> presses;
 		u64 base_ms = 0; // GetTickCount64 when the game was first seen running
 		DWORD packet = 0;
-		WORD last = 0;
+		u32 last = 0;
 	};
 
 	press_script s_script;
 
-	WORD button_from_name(const std::string& name)
+	u32 button_from_name(const std::string& name)
 	{
-		static const std::pair<const char*, WORD> names[]
+		static const std::pair<const char*, u32> names[]
 		{
 			{"cross", XINPUT_GAMEPAD_A}, {"circle", XINPUT_GAMEPAD_B}, {"square", XINPUT_GAMEPAD_X},
 			{"triangle", XINPUT_GAMEPAD_Y}, {"start", XINPUT_GAMEPAD_START}, {"select", XINPUT_GAMEPAD_BACK},
@@ -328,8 +328,11 @@ namespace
 			{"l3", XINPUT_GAMEPAD_LEFT_THUMB}, {"r3", XINPUT_GAMEPAD_RIGHT_THUMB},
 			// RPCS3 for Game Vault: the triggers (a racing game's gas), on two bits XInput leaves unused
 			{"l2", 0x0400}, {"r2", 0x0800},
+			// the sticks pushed all the way (walking and aiming in a shooter): left stick, then right stick
+			{"lup", 0x10000}, {"ldown", 0x20000}, {"lleft", 0x40000}, {"lright", 0x80000},
+			{"rup", 0x100000}, {"rdown", 0x200000}, {"rleft", 0x400000}, {"rright", 0x800000},
 		};
-		WORD result = 0;
+		u32 result = 0;
 		std::stringstream parts(name);
 		for (std::string part; std::getline(parts, part, '+');)
 		{
@@ -341,7 +344,7 @@ namespace
 	}
 
 	// Buttons the script holds right now; 0 when none. Caller holds the gamepads mutex.
-	WORD scripted_buttons()
+	u32 scripted_buttons()
 	{
 		if (s_script.presses.empty())
 			return 0;
@@ -355,7 +358,7 @@ namespace
 		}
 
 		const u64 t = now - s_script.base_ms;
-		WORD held = 0;
+		u32 held = 0;
 		for (const press& p : s_script.presses)
 		{
 			if (t < p.start_ms || t > p.end_ms + p.hold_ms)
@@ -435,7 +438,7 @@ DWORD WINAPI uwp_xinput_get_state(DWORD user_index, XINPUT_STATE* state)
 	if (user_index == 0 && state && !s_script.presses.empty())
 	{
 		// Scripted presses on controller 1, merged with the real controller if one is there.
-		const WORD scripted = scripted_buttons();
+		const u32 scripted = scripted_buttons();
 		gamepad_reading r{};
 		if (pad && SUCCEEDED(pad->GetCurrentReading(&r)) && r.timestamp != pads.last_timestamp[0])
 		{
@@ -443,7 +446,7 @@ DWORD WINAPI uwp_xinput_get_state(DWORD user_index, XINPUT_STATE* state)
 			pads.packet[0]++;
 		}
 		*state = {};
-		state->Gamepad.wButtons = scripted & ~WORD(0x0C00);
+		state->Gamepad.wButtons = static_cast<WORD>(scripted & 0xF3FF);
 		if (scripted & 0x0400) state->Gamepad.bLeftTrigger = 255;
 		if (scripted & 0x0800) state->Gamepad.bRightTrigger = 255;
 		if (pad)
@@ -464,6 +467,15 @@ DWORD WINAPI uwp_xinput_get_state(DWORD user_index, XINPUT_STATE* state)
 			state->Gamepad.sThumbRX = to_thumb(r.right_x);
 			state->Gamepad.sThumbRY = to_thumb(r.right_y);
 		}
+		// scripted sticks, pushed all the way (over the real controller's)
+		if (scripted & 0x10000) state->Gamepad.sThumbLY = 32767;
+		if (scripted & 0x20000) state->Gamepad.sThumbLY = -32768;
+		if (scripted & 0x40000) state->Gamepad.sThumbLX = -32768;
+		if (scripted & 0x80000) state->Gamepad.sThumbLX = 32767;
+		if (scripted & 0x100000) state->Gamepad.sThumbRY = 32767;
+		if (scripted & 0x200000) state->Gamepad.sThumbRY = -32768;
+		if (scripted & 0x400000) state->Gamepad.sThumbRX = -32768;
+		if (scripted & 0x800000) state->Gamepad.sThumbRX = 32767;
 		state->dwPacketNumber = pads.packet[0] + s_script.packet;
 		return ERROR_SUCCESS;
 	}

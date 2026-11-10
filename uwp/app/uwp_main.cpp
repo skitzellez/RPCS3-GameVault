@@ -811,6 +811,10 @@ namespace
 				// Still open: the first race can run out of the 5 GB while it loads (4.7 GB committed).
 				{"BLUS30295", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\n  Max SPURS Threads: 4\nVideo:\n  Write Color Buffers: true\n"},
 				{"BLES00759", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\n  Max SPURS Threads: 4\nVideo:\n  Write Color Buffers: true\n"},
+				// RPCS3 for Game Vault: Fuse (Insomniac/EA) asks for its EA online sign-in again every few seconds while
+				// the network is Connected without PSN (a pop-up the player can't get rid of); offline it plays. Its
+				// levels are pure white without Write Color Buffers (Xbox 2026-11-10, BLUS31040 from a NAS .iso).
+				{"BLUS31040", "Fuse", "Net:\n  Internet enabled: Disconnected\nVideo:\n  Write Color Buffers: true\n"},
 				{"BLJM60244", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\n  Max SPURS Threads: 4\nVideo:\n  Write Color Buffers: true\n"},
 			};
 

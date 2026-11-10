@@ -326,6 +326,8 @@ namespace
 			{"up", XINPUT_GAMEPAD_DPAD_UP}, {"down", XINPUT_GAMEPAD_DPAD_DOWN}, {"left", XINPUT_GAMEPAD_DPAD_LEFT},
 			{"right", XINPUT_GAMEPAD_DPAD_RIGHT}, {"l1", XINPUT_GAMEPAD_LEFT_SHOULDER}, {"r1", XINPUT_GAMEPAD_RIGHT_SHOULDER},
 			{"l3", XINPUT_GAMEPAD_LEFT_THUMB}, {"r3", XINPUT_GAMEPAD_RIGHT_THUMB},
+			// RPCS3 for Game Vault: the triggers (a racing game's gas), on two bits XInput leaves unused
+			{"l2", 0x0400}, {"r2", 0x0800},
 		};
 		WORD result = 0;
 		std::stringstream parts(name);
@@ -441,7 +443,9 @@ DWORD WINAPI uwp_xinput_get_state(DWORD user_index, XINPUT_STATE* state)
 			pads.packet[0]++;
 		}
 		*state = {};
-		state->Gamepad.wButtons = scripted;
+		state->Gamepad.wButtons = scripted & ~WORD(0x0C00);
+		if (scripted & 0x0400) state->Gamepad.bLeftTrigger = 255;
+		if (scripted & 0x0800) state->Gamepad.bRightTrigger = 255;
 		if (pad)
 		{
 			const auto map = [&](UINT32 from, WORD to) { if (r.buttons & from) state->Gamepad.wButtons |= to; };

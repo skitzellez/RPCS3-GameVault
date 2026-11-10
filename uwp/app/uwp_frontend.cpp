@@ -10,6 +10,7 @@
 
 #include "stdafx.h"
 #include "uwp_frontend.h"
+#include "uwp_xaml.h"
 #include "uwp_firmware.h"
 #include "uwp_update.h"
 #include "uwp_patches.h"

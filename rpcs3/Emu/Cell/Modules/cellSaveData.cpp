@@ -2207,7 +2207,17 @@ static NEVER_INLINE error_code savedata_op(ppu_thread& ppu, u32 operation, u32 v
 	if (!psf.empty() && has_modified)
 	{
 		// First, create temporary directory
-		if (fs::create_dir(new_path) || fs::g_tls_error == fs::error::exist)
+		bool made_dir = fs::create_dir(new_path) || fs::g_tls_error == fs::error::exist;
+#ifdef RPCS3_UWP
+		// RPCS3 for Game Vault: on a USB drive the Xbox's file broker answers "access denied" (not "not found") when a
+		// folder above is missing (Fuse's first autosave: savedata/.working_BLUS31040-SAVE-A/): make them and try again
+		if (!made_dir)
+		{
+			fs::create_path(fs::get_parent_dir(new_path));
+			made_dir = fs::create_dir(new_path) || fs::g_tls_error == fs::error::exist;
+		}
+#endif
+		if (made_dir)
 		{
 			fs::remove_all(new_path, false);
 		}

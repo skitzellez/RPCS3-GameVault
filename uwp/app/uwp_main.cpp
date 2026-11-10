@@ -804,10 +804,12 @@ namespace
 				{"NPUB31419", "Minecraft", "Net:\n  Internet enabled: Disconnected\n"},
 				// RPCS3 for Game Vault: Blur sits on a black screen after the intro (as the race data loads) until
 				// Write Color Buffers is on (RPCS3 wiki/forums; on the Xbox 2026-11-09, BLUS30295: black at ~5 min
-				// without it, loads with it). Its speed is SPU-bound (all 6 SPUs ~100% in the intro video).
-				{"BLUS30295", "Blur", "Video:\n  Write Color Buffers: true\n"},
-				{"BLES00759", "Blur", "Video:\n  Write Color Buffers: true\n"},
-				{"BLJM60244", "Blur", "Video:\n  Write Color Buffers: true\n"},
+				// without it, loads with it). With SPU blocks Mega (the app's default) it then loads forever after
+				// the intro (SPUs ~95%, no file read for 8 min); Safe + loop detection reaches the menus, the car
+				// choice and the races. Its speed is SPU-bound (all 6 SPUs ~100%).
+				{"BLUS30295", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\nVideo:\n  Write Color Buffers: true\n"},
+				{"BLES00759", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\nVideo:\n  Write Color Buffers: true\n"},
+				{"BLJM60244", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\nVideo:\n  Write Color Buffers: true\n"},
 			};
 
 			for (const auto& game : s_games)

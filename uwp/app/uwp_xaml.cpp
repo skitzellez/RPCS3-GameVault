@@ -85,15 +85,19 @@ namespace uwp_xaml
 		constexpr GUID IID_ILauncherStatics{0x277151c3, 0x9e3e, 0x42f6, {0x91, 0xa4, 0x5d, 0xfd, 0xeb, 0x23, 0x24, 0x51}};
 
 		// The launchOnExit= part of a Game Vault link (already %-decoded with the rest), empty when there is none.
-		std::string link_back(const std::string& text)
+		std::string link_param(const std::string& text, std::string_view name)
 		{
 			const usz quote = text.rfind('"');
-			const usz at = text.find("launchOnExit=", quote == std::string::npos ? 0 : quote);
+			const usz at = text.find(name, quote == std::string::npos ? 0 : quote);
 			if (at == std::string::npos)
 				return {};
-			const usz end = text.find('&', at + 13);
-			return text.substr(at + 13, end == std::string::npos ? std::string::npos : end - at - 13);
+			const usz from = at + name.size();
+			const usz end = text.find('&', from);
+			return text.substr(from, end == std::string::npos ? std::string::npos : end - from);
 		}
+		std::string link_back(const std::string& text) { return link_param(text, "launchOnExit="); }
+		// Game Vault's sign-in file for a network game (&netcred=<path>), like its Xenia links
+		std::string link_netcred(const std::string& text) { return link_param(text, "netcred="); }
 
 		// The game in a Game Vault link: gamevault-rpcs3:?cmd=rpcs3 "<path>"&launchOnExit=... (the path %-escaped,
 		// like Game Vault's other emulator links). Empty when the link names none.
@@ -1956,7 +1960,7 @@ namespace uwp_xaml
 					const std::string text = link_decode(link);
 					const std::string path = link_game_path(text);
 					xaml_log.notice("Game Vault link: %s -> '%s'", link, path);
-					uwp_frontend::boot_from_link(path, link_back(text));
+					uwp_frontend::boot_from_link(path, link_back(text), link_netcred(text));
 				}
 				return hr;
 			}

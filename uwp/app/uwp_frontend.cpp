@@ -11,6 +11,7 @@
 #include "stdafx.h"
 #include "uwp_frontend.h"
 #include "uwp_xaml.h"
+#include "uwp_netgame.h"
 #include "uwp_firmware.h"
 #include "uwp_update.h"
 #include "uwp_patches.h"
@@ -2757,10 +2758,28 @@ namespace uwp_frontend
 	std::string g_link_back; // with g_link_path: the way back of a link that came before the menu was ready
 	std::string g_back_link; // main thread: Game Vault's link, opened when the game it started ends
 
-	void run_link_boot(const std::string& path)
+	std::string g_link_netcred; // with g_link_path: Game Vault's sign-in file for a network game
+
+	void run_link_boot(const std::string& link_path, const std::string& netcred = {})
 	{
-		ui_log.notice("Game Vault: starting '%s' from the link", path);
-		fs::write_file(last_game_file(), fs::rewrite, path);
+		ui_log.notice("Game Vault: starting '%s' from the link", link_path);
+		std::string path = link_path;
+		// Game Vault for a network game: smb://server/share/<game folder or .iso>, read straight from the share
+		if (uwp_netgame::is_url(link_path))
+		{
+			set_status("Opening the game on the network...", col_dim);
+			std::string error;
+			path = uwp_netgame::open(link_path, netcred, &error);
+			if (path.empty())
+			{
+				set_status("The network game could not be opened", col_err);
+				post_modal("Network game", "The game could not be opened from the network (" + error + "). "
+					"Check that the PC or NAS is on, then try again from Game Vault.");
+				return;
+			}
+		}
+		else
+			fs::write_file(last_game_file(), fs::rewrite, path); // (a network path isn't a game to reopen by itself)
 		set_status("Starting the game...", col_dim);
 		g_host.run_on_main([path]()
 		{
@@ -2780,7 +2799,7 @@ namespace uwp_frontend
 		});
 	}
 
-	void boot_from_link(const std::string& path, const std::string& back_link)
+	void boot_from_link(const std::string& path, const std::string& back_link, const std::string& netcred)
 	{
 		if (path.empty())
 			return;
@@ -2791,10 +2810,12 @@ namespace uwp_frontend
 		{
 			g_link_path = path;
 			g_link_back = back_link;
+			g_link_netcred = netcred;
 			return;
 		}
 		g_host.run_on_main([back_link]() { g_back_link = back_link; });
-		run_link_boot(path);
+		// (opening a network share can take seconds: not on the UI thread that delivered the link)
+		std::thread([path, netcred]() { run_link_boot(path, netcred); }).detach();
 	}
 
 	namespace
@@ -2977,7 +2998,10 @@ namespace uwp_frontend
 		if (!g_link_path.empty())
 		{
 			g_host.run_on_main([back = std::exchange(g_link_back, {})]() { g_back_link = back; });
-			run_link_boot(std::exchange(g_link_path, {}));
+			std::thread([path = std::exchange(g_link_path, {}), netcred = std::exchange(g_link_netcred, {})]()
+			{
+				run_link_boot(path, netcred);
+			}).detach();
 		}
 	}
 

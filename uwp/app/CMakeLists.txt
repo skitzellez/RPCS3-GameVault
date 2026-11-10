@@ -9,6 +9,7 @@ add_executable(rpcs3_uwp WIN32
     uwp_xaml.cpp
     ${CMAKE_BINARY_DIR}/uwp_xaml/uwp_xaml_pages.inc
     uwp_firmware.cpp
+    uwp_netgame.cpp
     uwp_rpcn.cpp
     uwp_telemetry.cpp
     uwp_telemetry_scrub.cpp

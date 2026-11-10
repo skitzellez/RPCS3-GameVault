@@ -13,6 +13,9 @@ if (-not (Test-Path $work)) {
     gh run download $Run -R skitzellez/RPCS3-GameVault -n rpcs3-gamevault-layout -D $work
     if ($LASTEXITCODE) { throw "download failed" }
 }
+# libsmb2 (LGPL-2.1) for network games: the same smb2.dll Game Vault ships (loaded only when one starts)
+Copy-Item -Force "$gv\pkg\smb2.dll" "$work\smb2.dll"
+Copy-Item -Force "C:\Users\GamerDad\XboxEmu\deps\libsmb2\COPYING" "$work\libsmb2-LICENSE.txt"
 # the manifest from this checkout (it may be newer than the one the build used), with the version asked for
 $manifest = Get-Content "$repo\uwp\package\AppxManifest.xml" -Raw
 $manifest = $manifest -replace '(<Identity [^>]*Version=")[^"]*(")', "`${1}$Version`${2}"

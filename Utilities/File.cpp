@@ -81,9 +81,47 @@ namespace
 		return ::GetFileAttributesExW(name, level, info) || (uwp_access_denied() && GetFileAttributesExFromAppW(name, level, info));
 	}
 
+	BOOL uwp_CreateDirectoryW_once(LPCWSTR name, LPSECURITY_ATTRIBUTES sa)
+	{
+		if (::CreateDirectoryW(name, sa))
+			return TRUE;
+		const DWORD err = GetLastError();
+		if (err == ERROR_ALREADY_EXISTS)
+			return FALSE;
+		if (CreateDirectoryFromAppW(name, sa))
+			return TRUE;
+		return FALSE;
+	}
+
+	// RPCS3 for Game Vault: on the USB drive the Xbox answers "access denied" (or "not found") when a parent folder
+	// is missing, so a first save (home/00000001/savedata/<game>) failed with CELL_SAVEDATA_ERROR_ACCESS_ERROR
+	// (Dynasty Warriors: Gundam Reborn, 2026-11-11). The broker is asked, then the parents are made and it is tried once more.
 	BOOL uwp_CreateDirectoryW(LPCWSTR name, LPSECURITY_ATTRIBUTES sa)
 	{
-		return ::CreateDirectoryW(name, sa) || (uwp_access_denied() && CreateDirectoryFromAppW(name, sa));
+		if (uwp_CreateDirectoryW_once(name, sa))
+			return TRUE;
+		DWORD err = GetLastError();
+		if (err == ERROR_ALREADY_EXISTS)
+			return FALSE;
+		std::wstring path(name);
+		while (!path.empty() && (path.back() == L'\\' || path.back() == L'/'))
+			path.pop_back();
+		const size_t cut = path.find_last_of(L"\\/");
+		if (cut == std::wstring::npos || cut < 3)
+		{
+			SetLastError(err);
+			return FALSE;
+		}
+		const std::wstring parent = path.substr(0, cut);
+		WIN32_FILE_ATTRIBUTE_DATA info{};
+		const bool parent_there = ::GetFileAttributesExW(parent.c_str(), GetFileExInfoStandard, &info) ||
+			GetFileAttributesExFromAppW(parent.c_str(), GetFileExInfoStandard, &info);
+		if (parent_there || !uwp_CreateDirectoryW(parent.c_str(), nullptr))
+		{
+			SetLastError(err);
+			return FALSE;
+		}
+		return uwp_CreateDirectoryW_once(name, sa);
 	}
 
 	BOOL uwp_RemoveDirectoryW(LPCWSTR name)

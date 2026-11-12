@@ -315,6 +315,9 @@ protected:
 	void begin_draw() override;
 	bool resolve_sampler_state(rsx::flags32_t& invalidated_programs) override;
 	bool end_draw() override;
+#ifdef RPCS3_UWP
+	void gv_log_draw_state();
+#endif
 	void emit_geometry(u32 sub_index) override;
 
 	bool on_framebuffer_bound(const rsx::framebuffer_layout& layout) override;

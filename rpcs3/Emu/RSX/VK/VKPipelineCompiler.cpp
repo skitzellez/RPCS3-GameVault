@@ -21,6 +21,10 @@
 // created, which is on the async pipeline compiler threads.
 bool g_uwp_static_pipeline_state = true;
 
+// Game Vault draw-state test switches (VKPipelineCompiler.h)
+std::string g_uwp_rsx_flag_dir;
+bool g_gv_nocull = false, g_gv_nodepth = false, g_gv_noclamp = false;
+
 // Dozen keeps the SPIR-V -> DXIL translation of every pipeline in the VkPipelineCache, which RPCS3
 // creates empty at each boot: on the Xbox that is 0.4-1.5 s of CPU per pipeline, ~750 pipelines
 // (8 minutes of compile) in a Portal 2 session with warm caches. Kept per game in this file

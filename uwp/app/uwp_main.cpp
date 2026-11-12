@@ -121,6 +121,7 @@ extern u32 g_uwp_desc_pool_max; // VKProgramPipeline.cpp
 extern bool g_uwp_deferred_shader_compile; // VKProgramPipeline.cpp
 extern u32 g_uwp_pipeline_limit; // VKPresent.cpp
 extern bool g_uwp_static_pipeline_state; // VKPipelineCompiler.cpp
+extern std::string g_uwp_rsx_flag_dir; // VKPipelineCompiler.cpp
 extern bool g_uwp_pso_library; // VKPipelineCompiler.cpp
 extern "C" void* uwp_lazy_lookup(const wchar_t* dll, const char* name); // uwp_lazyresolve.c
 namespace rsx { extern u32 g_uwp_rsx_idle_sleep_us; extern bool g_uwp_fifo_partial_line, g_uwp_fifo_retry_cap; } // RSXFIFO.cpp
@@ -1140,6 +1141,7 @@ namespace
 			// D3D12 PSOs in the background, not at the draw (hiccups in Portal 2). An empty
 			// LocalState/dynamic_stencil_bias file brings back RPCS3's dynamic state.
 			g_uwp_static_pipeline_state = !fs::is_file(g_local_dir + "dynamic_stencil_bias");
+			g_uwp_rsx_flag_dir = g_local_dir;
 			sys_log.always()("UWP: stencil masks and depth bias as %s state", g_uwp_static_pipeline_state ? "pipeline" : "dynamic");
 			// New shaders' SPIR-V compile on the pipeline compiler threads, not the RSX thread
 			// (VKProgramPipeline.cpp). An empty LocalState/sync_shader_compile file keeps it on RSX.

@@ -299,14 +299,27 @@ namespace vk
 		}
 #endif
 
+#ifdef RPCS3_UWP
+		// Game Vault test switches (VKPipelineCompiler.h): find which state hides a game's world
+		if (g_gv_noclamp)
+		{
+			properties.state.enable_depth_clamp(false);
+		}
+		if (depth_stencil.depth_test_enabled && !g_gv_nodepth)
+#else
 		if (depth_stencil.depth_test_enabled)
+#endif
 		{
 			//NOTE: Like stencil, depth write is meaningless without depth test
 			properties.state.set_depth_mask(depth_stencil.depth_write_enabled);
 			properties.state.enable_depth_test(vk::get_compare_func(depth_stencil.depth_func));
 		}
 
+#ifdef RPCS3_UWP
+		if (raster.cull_face_enabled && !g_gv_nocull)
+#else
 		if (raster.cull_face_enabled)
+#endif
 		{
 			properties.state.enable_cull_face(vk::get_cull_face(raster.cull_face_mode));
 		}

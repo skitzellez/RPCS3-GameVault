@@ -256,6 +256,10 @@ namespace vk
 extern bool g_uwp_static_pipeline_state; // VKPipelineCompiler.cpp
 extern std::string g_uwp_pipeline_cache_path; // VKPipelineCompiler.cpp
 extern bool g_uwp_pso_library; // VKPipelineCompiler.cpp
+// Game Vault test switches for draw state (empty files in LocalState, looked at every 2 s by VKDraw.cpp's
+// draw-state log): gv_nocull, gv_nodepth, gv_noclamp. g_uwp_rsx_flag_dir = LocalState with a trailing slash.
+extern std::string g_uwp_rsx_flag_dir;
+extern bool g_gv_nocull, g_gv_nodepth, g_gv_noclamp;
 #endif
 
 namespace rpcs3

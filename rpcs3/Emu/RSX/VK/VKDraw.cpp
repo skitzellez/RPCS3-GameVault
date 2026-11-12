@@ -1,4 +1,8 @@
 #include "stdafx.h"
+#include "Utilities/File.h"
+#include <chrono>
+#include <unordered_map>
+#include <algorithm>
 #include "../Common/BufferUtils.h"
 #include "../Program/GLSLCommon.h"
 #include "../rsx_methods.h"
@@ -1315,6 +1319,63 @@ bool VKGSRender::resolve_sampler_state(rsx::flags32_t& invalidated_programs)
 	return true;
 }
 
+#ifdef RPCS3_UWP
+// Game Vault: every 3 s the most common draw states of the last 3 s (a game whose world is drawn but never seen:
+// Dynasty Warriors: Gundam Reborn's missions show only the sky, cutscenes of the same stage are fine). Also reads
+// the test switches gv_nocull / gv_nodepth / gv_noclamp (empty files in LocalState) every 2 s.
+void VKGSRender::gv_log_draw_state()
+{
+	static std::unordered_map<std::string, u32> s_states;
+	static u64 s_last_log = 0, s_last_flags = 0;
+	static u32 s_draws = 0;
+	const u64 now = static_cast<u64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+
+	if (now - s_last_flags > 2'000'000 && !g_uwp_rsx_flag_dir.empty())
+	{
+		s_last_flags = now;
+		const bool nocull = fs::is_file(g_uwp_rsx_flag_dir + "gv_nocull");
+		const bool nodepth = fs::is_file(g_uwp_rsx_flag_dir + "gv_nodepth");
+		const bool noclamp = fs::is_file(g_uwp_rsx_flag_dir + "gv_noclamp");
+		if (nocull != g_gv_nocull || nodepth != g_gv_nodepth || noclamp != g_gv_noclamp)
+		{
+			g_gv_nocull = nocull;
+			g_gv_nodepth = nodepth;
+			g_gv_noclamp = noclamp;
+			rsx_log.always()("GV draw test switches: no cull %d, no depth test %d, no depth clamp %d", +nocull, +nodepth, +noclamp);
+		}
+	}
+
+	const auto r = REGS(m_ctx);
+	const auto& bl = m_ctx->draw_state.blend.color_mask[0];
+	std::string key = fmt::format("dt %d f%d dw %d | cull %d m%d ff%d | clip %g..%g vz %g+%g clamp %d | ucp %d%d%d%d%d%d | blend %d st %d at %d lo %d cm %d%d%d%d | rt %d %ux%u zfmt %d",
+		+r->depth_test_enabled(), static_cast<int>(r->depth_func()), +r->depth_write_enabled(),
+		+r->cull_face_enabled(), static_cast<int>(r->cull_face_mode()), static_cast<int>(r->front_face_mode()),
+		r->clip_min(), r->clip_max(), r->viewport_scale_z(), r->viewport_offset_z(), +m_ctx->draw_state.depth_stencil.depth_clamp_enabled,
+		static_cast<int>(r->clip_plane_0_enabled()), static_cast<int>(r->clip_plane_1_enabled()), static_cast<int>(r->clip_plane_2_enabled()),
+		static_cast<int>(r->clip_plane_3_enabled()), static_cast<int>(r->clip_plane_4_enabled()), static_cast<int>(r->clip_plane_5_enabled()),
+		+r->blend_enabled(), +r->stencil_test_enabled(), +r->alpha_test_enabled(), +r->logic_op_enabled(),
+		+bl.r, +bl.g, +bl.b, +bl.a,
+		::size32(m_draw_buffers), m_draw_fbo ? m_draw_fbo->width() : 0u, m_draw_fbo ? m_draw_fbo->height() : 0u,
+		static_cast<int>(r->surface_depth_fmt()));
+	s_states[key]++;
+	s_draws++;
+
+	if (now - s_last_log > 3'000'000)
+	{
+		s_last_log = now;
+		std::vector<std::pair<std::string, u32>> top(s_states.begin(), s_states.end());
+		std::sort(top.begin(), top.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+		rsx_log.always()("GV draw states, %u draws in 3 s, %u kinds:", s_draws, ::size32(top));
+		for (usz i = 0; i < top.size() && i < 10; i++)
+		{
+			rsx_log.always()("GV   %6u  %s", top[i].second, top[i].first);
+		}
+		s_states.clear();
+		s_draws = 0;
+	}
+}
+#endif
+
 bool VKGSRender::end_draw()
 {
 	// Groups changed since the last executed draw. Loading an interpreter program adds both programs.
@@ -1331,6 +1392,10 @@ bool VKGSRender::end_draw()
 	// Load program execution environment
 	load_program_env();
 	m_ctx->stats.setup_time += m_profiler.duration();
+
+#ifdef RPCS3_UWP
+	gv_log_draw_state();
+#endif
 
 	// Apply write memory barriers
 	if (auto ds = std::get<1>(res()->surface_cache.m_bound_depth_stencil))

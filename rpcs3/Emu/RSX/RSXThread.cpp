@@ -1,6 +1,12 @@
 #include "stdafx.h"
 #include "RSXThread.h"
 
+#ifdef RPCS3_UWP
+// Game Vault: conditional rendering test switch and counters (set and printed by VKDraw.cpp's draw-state log)
+bool g_gv_nocondrender = false;
+atomic_t<u32> g_gv_cond_skipped{0}, g_gv_cond_gpu{0}, g_gv_cond_zero{0}, g_gv_cond_nonzero{0};
+#endif
+
 #include "Capture/rsx_capture.h"
 #include "Common/surface_store.h"
 #include "Core/RSXReservationLock.hpp"
@@ -1714,6 +1720,14 @@ namespace rsx
 
 	void thread::enable_conditional_rendering(vm::addr_t ref)
 	{
+#ifdef RPCS3_UWP
+		// Game Vault test switch gv_nocondrender (VKDraw.cpp): every draw is made, whatever the occlusion queries say
+		if (g_gv_nocondrender)
+		{
+			g_gv_cond_skipped++;
+			return;
+		}
+#endif
 		m_ctx->cond_render.enable_conditional_render(this, ref);
 
 		auto result = zcull_ctrl->find_query(ref, true);
@@ -1743,6 +1757,9 @@ namespace rsx
 
 	void thread::begin_conditional_rendering(const std::vector<reports::occlusion_query_info*>& sources)
 	{
+#ifdef RPCS3_UWP
+		g_gv_cond_gpu++;
+#endif
 		m_renderer->on_begin_conditional_rendering(sources);
 
 		m_ctx->cond_render.hw_cond_active = true;

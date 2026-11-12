@@ -1336,6 +1336,12 @@ void VKGSRender::gv_log_draw_state()
 		const bool nocull = fs::is_file(g_uwp_rsx_flag_dir + "gv_nocull");
 		const bool nodepth = fs::is_file(g_uwp_rsx_flag_dir + "gv_nodepth");
 		const bool noclamp = fs::is_file(g_uwp_rsx_flag_dir + "gv_noclamp");
+		const bool nocond = fs::is_file(g_uwp_rsx_flag_dir + "gv_nocondrender");
+		if (nocond != g_gv_nocondrender)
+		{
+			g_gv_nocondrender = nocond;
+			rsx_log.always()("GV draw test switch: every draw made (no conditional rendering) %d", +nocond);
+		}
 		if (nocull != g_gv_nocull || nodepth != g_gv_nodepth || noclamp != g_gv_noclamp)
 		{
 			g_gv_nocull = nocull;
@@ -1365,7 +1371,7 @@ void VKGSRender::gv_log_draw_state()
 		s_last_log = now;
 		std::vector<std::pair<std::string, u32>> top(s_states.begin(), s_states.end());
 		std::sort(top.begin(), top.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
-		rsx_log.always()("GV draw states, %u draws in 3 s, %u kinds:", s_draws, ::size32(top));
+		rsx_log.always()("GV draw states, %u draws in 3 s, %u kinds | conditional render: %u skipped by switch, %u on GPU, CPU results %u zero / %u not zero:", s_draws, ::size32(top), g_gv_cond_skipped.exchange(0), g_gv_cond_gpu.exchange(0), g_gv_cond_zero.exchange(0), g_gv_cond_nonzero.exchange(0));
 		for (usz i = 0; i < top.size() && i < 10; i++)
 		{
 			rsx_log.always()("GV   %6u  %s", top[i].second, top[i].first);

@@ -1,5 +1,12 @@
 #pragma once
 
+#ifdef RPCS3_UWP
+#include "util/atomic.hpp"
+// Game Vault conditional rendering test switch + counters (RSXThread.cpp)
+extern bool g_gv_nocondrender;
+extern atomic_t<u32> g_gv_cond_skipped, g_gv_cond_gpu, g_gv_cond_zero, g_gv_cond_nonzero;
+#endif
+
 #include <queue>
 #include <deque>
 #include <map>

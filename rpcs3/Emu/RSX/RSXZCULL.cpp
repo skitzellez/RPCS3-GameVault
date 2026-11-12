@@ -510,6 +510,9 @@ namespace rsx
 					eval_failed = (vm::_ref<CellGcmReportData>(writer->sink).value == 0u);
 				}
 
+#ifdef RPCS3_UWP
+				(eval_failed ? g_gv_cond_zero : g_gv_cond_nonzero)++;
+#endif
 				// Only the bound context can have host conditional rendering active (bind_context ends it on the way out)
 				ensure(!owner->cond_render.hw_cond_active || owner == ptimer->get_context());
 				owner->cond_render.set_eval_result(ptimer, eval_failed);

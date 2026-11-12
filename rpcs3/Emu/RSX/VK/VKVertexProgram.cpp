@@ -6,6 +6,8 @@
 #include "vkutils/device.h"
 #include "../Program/GLSLCommon.h"
 #include "Emu/system_config.h"
+#include "Utilities/File.h"
+#include "VKPipelineCompiler.h"
 
 std::string VKVertexDecompilerThread::getFloatTypeName(usz elementCount)
 {
@@ -364,6 +366,15 @@ void VKVertexDecompilerThread::insertMainStart(std::stringstream& OS)
 	properties2.require_clip_plane_functions = true;
 	properties2.emulate_zclip_transform = true;
 	properties2.emulate_depth_clip_only = vk::g_render_device->get_shader_types_support().allow_float64;
+#ifdef RPCS3_UWP
+	// Game Vault test switch gv_nofp64 (empty file in LocalState, read when a vertex program is made): the
+	// single-precision depth transform. The double one needs floor() and division on doubles, which D3D12 does not
+	// have and Dozen has to lower (Gundam Reborn: the mission world is drawn but the sky covers it).
+	if (!g_uwp_rsx_flag_dir.empty() && fs::is_file(g_uwp_rsx_flag_dir + "gv_nofp64"))
+	{
+		properties2.emulate_depth_clip_only = false;
+	}
+#endif
 	properties2.low_precision_tests = vk::is_NVIDIA(vk::get_driver_vendor());
 	properties2.require_explicit_invariance = (vk::is_NVIDIA(vk::get_driver_vendor()) && g_cfg.video.shader_precision != gpu_preset_level::low);
 	properties2.require_instanced_render = !!(m_prog.ctrl & RSX_SHADER_CONTROL_INSTANCED_CONSTANTS);

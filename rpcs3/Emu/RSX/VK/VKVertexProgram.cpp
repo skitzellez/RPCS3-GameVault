@@ -367,13 +367,12 @@ void VKVertexDecompilerThread::insertMainStart(std::stringstream& OS)
 	properties2.emulate_zclip_transform = true;
 	properties2.emulate_depth_clip_only = vk::g_render_device->get_shader_types_support().allow_float64;
 #ifdef RPCS3_UWP
-	// Game Vault test switch gv_nofp64 (empty file in LocalState, read when a vertex program is made): the
-	// single-precision depth transform. The double one needs floor() and division on doubles, which D3D12 does not
-	// have and Dozen has to lower (Gundam Reborn: the mission world is drawn but the sky covers it).
-	if (!g_uwp_rsx_flag_dir.empty() && fs::is_file(g_uwp_rsx_flag_dir + "gv_nofp64"))
-	{
-		properties2.emulate_depth_clip_only = false;
-	}
+	// RPCS3 for Game Vault: the single-precision depth clip transform on the Xbox. The double one needs floor() and
+	// division on doubles, which D3D12 does not have; Dozen's lowering gave wrong depth, so Dynasty Warriors: Gundam
+	// Reborn's mission world was drawn but always hidden behind the sky (2026-11-12: with this, whole and stays).
+	// An empty LocalState/gv_fp64 file brings the double one back (testing).
+	properties2.emulate_depth_clip_only = !g_uwp_rsx_flag_dir.empty() && properties2.emulate_depth_clip_only &&
+		fs::is_file(g_uwp_rsx_flag_dir + "gv_fp64");
 #endif
 	properties2.low_precision_tests = vk::is_NVIDIA(vk::get_driver_vendor());
 	properties2.require_explicit_invariance = (vk::is_NVIDIA(vk::get_driver_vendor()) && g_cfg.video.shader_precision != gpu_preset_level::low);

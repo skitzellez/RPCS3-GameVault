@@ -1320,7 +1320,7 @@ bool VKGSRender::resolve_sampler_state(rsx::flags32_t& invalidated_programs)
 }
 
 #ifdef RPCS3_UWP
-// Game Vault: every 3 s the most common draw states of the last 3 s (a game whose world is drawn but never seen:
+// Game Vault: with an empty LocalState/gv_drawlog file, every 3 s the most common draw states of the last 3 s (a game whose world is drawn but never seen:
 // Dynasty Warriors: Gundam Reborn's missions show only the sky, cutscenes of the same stage are fine). Also reads
 // the test switches gv_nocull / gv_nodepth / gv_noclamp (empty files in LocalState) every 2 s.
 void VKGSRender::gv_log_draw_state()
@@ -1328,6 +1328,7 @@ void VKGSRender::gv_log_draw_state()
 	static std::unordered_map<std::string, u32> s_states;
 	static u64 s_last_log = 0, s_last_flags = 0;
 	static u32 s_draws = 0;
+	static bool s_logging = false;
 	const u64 now = static_cast<u64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
 
 	if (now - s_last_flags > 2'000'000 && !g_uwp_rsx_flag_dir.empty())
@@ -1336,6 +1337,7 @@ void VKGSRender::gv_log_draw_state()
 		const bool nocull = fs::is_file(g_uwp_rsx_flag_dir + "gv_nocull");
 		const bool nodepth = fs::is_file(g_uwp_rsx_flag_dir + "gv_nodepth");
 		const bool noclamp = fs::is_file(g_uwp_rsx_flag_dir + "gv_noclamp");
+		s_logging = fs::is_file(g_uwp_rsx_flag_dir + "gv_drawlog");
 		const bool nocond = fs::is_file(g_uwp_rsx_flag_dir + "gv_nocondrender");
 		if (nocond != g_gv_nocondrender)
 		{
@@ -1349,6 +1351,11 @@ void VKGSRender::gv_log_draw_state()
 			g_gv_noclamp = noclamp;
 			rsx_log.always()("GV draw test switches: no cull %d, no depth test %d, no depth clamp %d", +nocull, +nodepth, +noclamp);
 		}
+	}
+
+	if (!s_logging)
+	{
+		return;
 	}
 
 	const auto r = REGS(m_ctx);

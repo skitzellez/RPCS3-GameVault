@@ -35,6 +35,9 @@
 #include "Emu/Cell/Modules/cellMsgDialog.h"
 #include "Emu/Cell/Modules/cellOskDialog.h"
 #include "Emu/Cell/Modules/cellSaveData.h"
+#include "Emu/Cell/Modules/cellSysutil.h"
+#include "Emu/RSX/Overlays/overlay_manager.h"
+#include "Emu/RSX/Overlays/overlay_save_dialog.h"
 #include "Emu/Cell/Modules/sceNpTrophy.h"
 #include "Emu/Io/Null/null_camera_handler.h"
 #include "Emu/Io/Null/null_music_handler.h"
@@ -77,6 +80,36 @@ extern "C" void uwp_heap_guard_open_log(const wchar_t* path);
 extern "C" void uwp_lazy_report(char* out, size_t size);
 extern "C" void (*uwp_vkshim_log)(const char* where, const char* text);
 LOG_CHANNEL(sys_log, "SYS");
+LOG_CHANNEL(cellSaveData);
+
+// RPCS3 for Game Vault: the save data list on RPCS3's own on-screen dialog (rpcs3qt/save_data_dialog.cpp without
+// its Qt fallback). -2 = cancelled, -1 = new save, otherwise the save picked.
+class uwp_save_dialog final : public SaveDialogBase
+{
+public:
+	s32 ShowSaveDataList(const std::string& base_dir, std::vector<SaveDataEntry>& save_entries, s32 focused, u32 op, vm::ptr<CellSaveDataListSet> listSet, bool enable_overlay) override
+	{
+		cellSaveData.notice("UWP: save list (%d saves, focused %d, op 0x%x)", save_entries.size(), focused, op);
+		const bool use_end = sysutil_send_system_cmd(CELL_SYSUTIL_DRAWING_BEGIN, 0) >= 0;
+		s32 result = -2;
+		if (auto manager = g_fxo->try_get<rsx::overlays::display_manager>())
+		{
+			const s32 picked = manager->create<rsx::overlays::save_dialog>()->show(base_dir, save_entries, focused, op, listSet, enable_overlay);
+			if (picked != rsx::overlays::user_interface::selection_code::error)
+				result = picked;
+			else
+				cellSaveData.error("UWP: save list dialog returned an error");
+		}
+		else
+		{
+			cellSaveData.error("UWP: no on-screen dialogs, save list cancelled");
+		}
+		cellSaveData.notice("UWP: save list answered %d", result);
+		if (use_end)
+			sysutil_send_system_cmd(CELL_SYSUTIL_DRAWING_END, 0);
+		return result;
+	}
+};
 
 extern std::string g_android_executable_dir;
 extern std::string g_android_config_dir;
@@ -710,7 +743,10 @@ namespace
 
 		g_emu_callbacks.get_msg_dialog = []() -> std::shared_ptr<MsgDialogBase> { return {}; };
 		g_emu_callbacks.get_osk_dialog = []() -> std::shared_ptr<OskDialogBase> { return {}; };
-		g_emu_callbacks.get_save_dialog = []() -> std::unique_ptr<SaveDialogBase> { return {}; };
+		// RPCS3 for Game Vault: the save list (pick a save / New Save Data) on RPCS3's own on-screen dialog, as the PC
+		// build shows it. With none, every list was "cancelled": Dynasty Warriors: Gundam Reborn asked "continue without
+		// saving?" again and again and never saved (2026-11-11).
+		g_emu_callbacks.get_save_dialog = []() -> std::unique_ptr<SaveDialogBase> { return std::make_unique<uwp_save_dialog>(); };
 		g_emu_callbacks.get_sendmessage_dialog = []() -> std::shared_ptr<SendMessageDialogBase> { return {}; };
 		g_emu_callbacks.get_recvmessage_dialog = []() -> std::shared_ptr<RecvMessageDialogBase> { return {}; };
 		g_emu_callbacks.get_trophy_notification_dialog = []() -> std::unique_ptr<TrophyNotificationBase> { return {}; };

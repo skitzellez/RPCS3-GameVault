@@ -56,7 +56,18 @@ namespace
 	HANDLE uwp_CreateFileW(LPCWSTR name, DWORD access, DWORD share, LPSECURITY_ATTRIBUTES sa, DWORD disp, DWORD flags, HANDLE tmpl)
 	{
 		const HANDLE h = ::CreateFileW(name, access, share, sa, disp, flags, tmpl);
-		return h == INVALID_HANDLE_VALUE && uwp_access_denied() ? CreateFileFromAppW(name, access, share, sa, disp, flags, tmpl) : h;
+		if (h != INVALID_HANDLE_VALUE)
+			return h;
+		// RPCS3 for Game Vault: making a file in a folder the broker made on the USB drive (a game data install that
+		// was renamed into place) answers "not found" to the app's own call, not "access denied". Dynasty Warriors:
+		// Gundam Reborn then stopped in cellGameContentPermit on its next start (2026-11-11). Asked of the broker too
+		// when a file is being made; plain look-ups that miss stay one call.
+		const DWORD err = GetLastError();
+		const bool creating = disp == CREATE_NEW || disp == CREATE_ALWAYS || disp == OPEN_ALWAYS;
+		if (err == ERROR_ACCESS_DENIED || (creating && (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND)))
+			return CreateFileFromAppW(name, access, share, sa, disp, flags, tmpl);
+		SetLastError(err);
+		return h;
 	}
 
 	HANDLE uwp_FindFirstFileExW(LPCWSTR name, FINDEX_INFO_LEVELS level, LPVOID data, FINDEX_SEARCH_OPS op, LPVOID filter, DWORD flags)

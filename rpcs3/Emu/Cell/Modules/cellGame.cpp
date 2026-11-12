@@ -1050,9 +1050,22 @@ error_code cellGameContentPermit(ppu_thread& ppu, vm::ptr<char[CELL_GAME_PATH_MA
 	else if (perm.can_create)
 	{
 		// Update PARAM.SFO
-		fs::pending_file temp(vfs::get(dir + "/PARAM.SFO"));
-		temp.file.write(psf::save_object(perm.sfo));
-		ensure(temp.commit());
+		// RPCS3 for Game Vault: a write that fails no longer stops the game (the data is there; a PS3 just updates
+		// this file). Written in place when the safe temporary file cannot be made.
+		const std::string sfo_path = vfs::get(dir + "/PARAM.SFO");
+		fs::pending_file temp(sfo_path);
+		if (temp.file)
+		{
+			temp.file.write(psf::save_object(perm.sfo));
+		}
+		if (!temp.file || !temp.commit())
+		{
+			cellGame.error("cellGameContentPermit(): could not update '%s' safely (%s), writing it in place", sfo_path, fs::g_tls_error);
+			if (!fs::write_file(sfo_path, fs::rewrite, psf::save_object(perm.sfo)))
+			{
+				cellGame.error("cellGameContentPermit(): could not write '%s' (%s), game goes on", sfo_path, fs::g_tls_error);
+			}
+		}
 	}
 
 	// This function is very slow by nature

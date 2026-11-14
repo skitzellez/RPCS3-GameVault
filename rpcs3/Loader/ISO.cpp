@@ -2,6 +2,7 @@
 
 #include "ISO.h"
 #include "Emu/VFS.h"
+#include "Loader/IRD.h"
 #include "Emu/system_utils.hpp"
 #include "Emu/System.h"
 #include "Crypto/utils.h"
@@ -2123,6 +2124,64 @@ void load_iso(const std::string& path)
 	stx::shared_ptr<iso_device> device = stx::make_shared<iso_device>(path);
 
 	s_iso_key_status = device->get_key_status();
+
+	// Game Vault: an encrypted image with no ".dkey"/".key" for it is read back through the disc key ("D1") of an IRD
+	// file next to it, as players usually keep one with their image: first "<image name>.ird", then any ".ird" of the
+	// same folder (they are often named after the game ID). One that belongs to another disc is refused by
+	// set_disc_key, which checks the key decrypts the image.
+	if (s_iso_key_status != iso_key_status::OK)
+	{
+		const usz ext_pos = path.rfind('.');
+		const usz dir_pos = path.find_last_of("/\\");
+		const std::string same_name = (ext_pos == umax ? path : path.substr(0, ext_pos)) + ".ird";
+		std::vector<std::string> irds;
+
+		if (fs::is_file(same_name))
+		{
+			irds.push_back(same_name);
+		}
+
+		if (dir_pos != umax)
+		{
+			const std::string dir = path.substr(0, dir_pos + 1);
+
+			for (auto&& entry : fs::dir(dir))
+			{
+				if (entry.is_directory || entry.name.size() < 5)
+				{
+					continue;
+				}
+
+				std::string ext = entry.name.substr(entry.name.size() - 4);
+				std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+				if (ext == ".ird" && dir + entry.name != same_name)
+				{
+					irds.push_back(dir + entry.name);
+				}
+			}
+		}
+
+		for (const std::string& ird_path : irds)
+		{
+			const ird_file ird(ird_path);
+
+			if (!ird.is_valid())
+			{
+				sys_log.warning("Loading ISO: the IRD file '%s' could not be read", ird_path);
+				continue;
+			}
+
+			if (device->set_disc_key(ird.get_disc_key()))
+			{
+				s_iso_key_status = iso_key_status::OK;
+				sys_log.success("Loading ISO: decrypted through the disc key of the IRD file '%s' (%s)", ird_path, ird.get_game_id());
+				break;
+			}
+
+			sys_log.warning("Loading ISO: the IRD file '%s' (%s) does not belong to this disc", ird_path, ird.get_game_id());
+		}
+	}
 
 	fs::set_virtual_device("iso_overlay_fs_dev", std::move(device));
 

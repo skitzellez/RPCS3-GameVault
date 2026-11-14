@@ -271,6 +271,7 @@ public:
 
 	const std::string& get_loaded_iso() const { return m_path; }
 	iso_key_status get_key_status() { return m_archive.get_key_status(); }
+	bool set_disc_key(const std::array<u8, 16>& disc_key) { return m_archive.set_disc_key(disc_key); }
 
 	bool stat(const std::string& path, fs::stat_t& info) override;
 	bool statfs(const std::string& path, fs::device_stat& info) override;

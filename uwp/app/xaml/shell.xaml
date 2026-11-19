@@ -34,12 +34,15 @@
             <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="White">Beta</TextBlock>
           </Border>
         </StackPanel>
-        <!-- The port author's logo (white on transparent, uwp/package/Assets/AuthorLogo.png) and site,
-             above the firmware text. -->
+        <!-- Game Vault's logo (uwp/package/Assets/GameVaultLogo.png) and a credit to the port it is
+             based on, above the firmware text. -->
         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom">
-          <StackPanel HorizontalAlignment="Right" Margin="0,0,0,4">
-            <Image Source="ms-appx:///Assets/AuthorLogo.png" Height="20" Width="20" Stretch="Uniform" HorizontalAlignment="Center"/>
-            <TextBlock FontSize="7" Opacity="0.55" Margin="0,1,0,0" HorizontalAlignment="Center">emelinhabibovic.de</TextBlock>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,4">
+            <Image Source="ms-appx:///Assets/GameVaultLogo.png" Height="26" Width="26" Stretch="Uniform" VerticalAlignment="Center"/>
+            <StackPanel Margin="7,0,0,0" VerticalAlignment="Center">
+              <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#FF35B8FF">Game Vault</TextBlock>
+              <TextBlock FontSize="9" Opacity="0.55">based on RPCS3 for Xbox by emelin</TextBlock>
+            </StackPanel>
           </StackPanel>
           <!-- The anonymous telemetry ID (uwp_telemetry.cpp), so a user can name their reports. -->
           <TextBlock x:Name="TelemetryIdText" FontSize="11" Opacity="0.55" HorizontalAlignment="Right" Margin="0,0,0,2"/>

@@ -28,7 +28,7 @@
       <Grid Grid.Row="0">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
           <TextBlock FontSize="28" FontWeight="SemiBold">RPCS3</TextBlock>
-          <TextBlock FontSize="15" Opacity="0.7" Margin="10,0,0,5" VerticalAlignment="Bottom">for Xbox</TextBlock>
+          <TextBlock FontSize="15" Opacity="0.7" Margin="10,0,0,5" VerticalAlignment="Bottom">for Game Vault</TextBlock>
           <Border Background="{ThemeResource SystemControlBackgroundAccentBrush}" CornerRadius="4" Padding="7,1,7,2"
                   Margin="10,0,0,5" VerticalAlignment="Bottom">
             <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="White">Beta</TextBlock>

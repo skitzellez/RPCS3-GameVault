@@ -14,7 +14,10 @@
 #include "util/video_provider.h"
 
 #ifdef RPCS3_UWP
-u32 g_uwp_pipeline_limit = 512; // LocalState/pipeline_limit (uwp_main.cpp)
+// Spartan: 4096 instead of 512. Under 512 J-Stars Victory VS+ (~2,000 pipelines in play) rebuilt them all
+// the time (3,710 builds, 1,720 evictions, one pair 47 times, 0.1-1 s each); the memory they held now
+// comes back by releasing idle descriptor pools instead (ProgramStateCache.h).
+u32 g_uwp_pipeline_limit = 4096; // LocalState/pipeline_limit (uwp_main.cpp)
 #endif
 #include "Emu/RSX/NV47/HW/context_accessors.define.h"
 
@@ -463,16 +466,25 @@ bool VKGSRender::present_frame(const rsx::display_flip_info_t& info)
 		s_evicted_pipelines += m_prog_buffer->evict_idle_pipelines(g_uwp_pipeline_limit, 10'000'000, m_program, m_prev_program,
 			[](std::unique_ptr<vk::glsl::program>& prog) { vk::get_gc()->dispose(prog); });
 
+	// Spartan: descriptor pools of pipelines unused for 10 s go back (about 1 MB each in Dozen/D3D12),
+	// checked once a second. The pipelines themselves stay compiled.
+	static u64 s_released_pools = 0;
+	if (static u64 s_last_pool_check = 0; m_prog_buffer && get_system_time() - s_last_pool_check >= 1'000'000)
+	{
+		s_last_pool_check = get_system_time();
+		s_released_pools += m_prog_buffer->release_idle_descriptor_pools(10'000'000, m_program, m_prev_program);
+	}
+
 	// Video memory by use every 10 s (it comes out of the app's 5 GB on the Xbox).
 	// The context resources do not exist yet while the shader cache loads (its progress dialog flips during on_init).
 	if (static u64 s_last_mem_log = 0; res() && get_system_time() - s_last_mem_log >= 10'000'000)
 	{
 		s_last_mem_log = get_system_time();
 		const auto resources = res();
-		rsx_log.notice("UWP VRAM: %s | pools MB: %s | texture cache %llu MB (%u unreleased), surface cache %llu MB | %s | %llu pipelines (%llu evicted)",
+		rsx_log.notice("UWP VRAM: %s | pools MB: %s | texture cache %llu MB (%u unreleased), surface cache %llu MB | %s | %llu pipelines (%llu evicted, %llu descriptor pools released)",
 			vk::get_current_mem_allocator()->get_heap_summary(), vk::vmm_get_usage_summary(),
 			resources->texture_cache.get_texture_memory_in_use() >> 20, resources->texture_cache.get_unreleased_textures_count(), resources->surface_cache.m_active_memory_used >> 20,
-			vk::get_descriptor_pool_stats(), m_prog_buffer ? m_prog_buffer->pipeline_count() : 0, s_evicted_pipelines);
+			vk::get_descriptor_pool_stats(), m_prog_buffer ? m_prog_buffer->pipeline_count() : 0, s_evicted_pipelines, s_released_pools);
 	}
 #endif
 

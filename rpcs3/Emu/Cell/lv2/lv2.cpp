@@ -2156,7 +2156,9 @@ waitpkg_func static void __tpause(u32 cycles, u32 cstate)
 // instead of left to the OS wait. Any OS wait lasts until a timer tick or two later on the Xbox
 // (Sleep(1) ~1.9 ms at 1 ms resolution), so with RPCS3's 500 us a 1 ms usleep took ~1.5 ms
 // (bench lv2_usleep1000: 763 ms for 500 x 1 ms). LocalState/usleep_spin.
-u64 g_uwp_usleep_spin_us = 500;
+// Spartan: 2000 instead of 500. Sleep(1) takes ~2 ms on the Xbox, so OS waits under that overshoot;
+// Raging Blast 2 menus went from ~24 to a steady 30 fps with 2000 (LocalState/usleep_spin still overrides).
+u64 g_uwp_usleep_spin_us = 2000;
 // Pause the core with MWAITX/TPAUSE for the spun tail of short sleeps instead of a yield loop.
 // RPCS3 only does that on 12+ host threads; the Xbox gives the app 8 (LocalState/um_wait).
 bool g_uwp_um_wait = false;

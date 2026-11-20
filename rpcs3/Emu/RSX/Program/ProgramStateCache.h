@@ -475,6 +475,29 @@ public:
 	{
 		return m_storage.size();
 	}
+
+	// Xbox memory budget (Spartan): each live pipeline also owns a descriptor pool, about 1 MB in the D3D12
+	// translation layer whatever its size. J-Stars Victory VS+ touched ~2,000 pipelines in a minute and
+	// went from 127 to 2,003 pools (3.0 -> 5.0 GB, then the device was lost). Pipelines are kept (rebuilding
+	// one costs 0.1-1 s on the Xbox), but the pools of those not looked up for min_idle_us are released;
+	// a pool is recreated in microseconds on the next draw. Returns how many pools were released.
+	usz release_idle_descriptor_pools(u64 min_idle_us, const pipeline_type* keep1, const pipeline_type* keep2)
+	{
+		std::lock_guard lock(m_pipeline_mutex);
+
+		const u64 now = get_system_time();
+		usz released = 0;
+		for (auto& [key, pipe] : m_storage)
+		{
+			auto* prog = pipe.get();
+			if (prog && prog != keep1 && prog != keep2 && now - prog->uwp_last_use >= min_idle_us)
+			{
+				released += prog->uwp_release_descriptor_pools();
+			}
+		}
+
+		return released;
+	}
 #endif
 
 	void clear()

@@ -166,6 +166,11 @@ namespace vk
 
 			void init(VkDevice dev);
 			void destroy();
+#ifdef RPCS3_UWP
+			// Xbox memory budget: hands the descriptor pool to the gc and forgets the current set; the
+			// next commit() makes a new pool. Returns whether there was a pool to release.
+			bool uwp_release_pool();
+#endif
 
 			void validate() const;
 
@@ -232,6 +237,10 @@ namespace vk
 			program& link(VkPipelineCache pipeline_cache, bool separate_stages);
 			program& bind(const vk::command_buffer& cmd, VkPipelineBindPoint bind_point);
 
+#ifdef RPCS3_UWP
+			// Releases the descriptor pools of this program (it stays compiled). Returns how many.
+			u32 uwp_release_descriptor_pools();
+#endif
 			bool has_uniform(program_input_type type, std::string_view uniform_name);
 			std::pair<u32, u32> get_uniform_location(::glsl::program_domain domain, program_input_type type, std::string_view uniform_name);
 

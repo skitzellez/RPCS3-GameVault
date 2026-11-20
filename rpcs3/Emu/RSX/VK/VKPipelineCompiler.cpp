@@ -487,7 +487,10 @@ namespace vk
 				g_uwp_pipelines_saved = g_uwp_pipelines_created.load();
 				uwp_saver_set_phase(uwp_saver_waiting);
 
-				// Save 10 s after the last new pipeline, or every minute while they keep coming
+				// Spartan: every save rewrites the whole file (28-39 MB for J-Stars Victory VS+), usually on the
+				// USB stick the game's ISO is read from; there one save took 4 s to 13 min. So save at most every
+				// 5 minutes, after 10 s without a new pipeline, or every 10 minutes while they keep coming
+				// (emelin: 10 s / every minute). The save at stop below is unchanged.
 				g_uwp_cache_saver = std::make_unique<named_thread<std::function<void()>>>("VK Pipeline Cache Saver", []()
 				{
 					u64 saved = g_uwp_pipelines_created, seen = saved, last_save = get_system_time();
@@ -511,7 +514,8 @@ namespace vk
 						const bool quiet = now_count == seen;
 						seen = now_count;
 
-						if (now_count != saved && (quiet || get_system_time() - last_save >= 60'000'000))
+						const u64 since_save = get_system_time() - last_save;
+						if (now_count != saved && ((quiet && since_save >= 300'000'000) || since_save >= 600'000'000))
 						{
 							uwp_save_pipeline_cache();
 							uwp_saver_set_phase(uwp_saver_waiting);

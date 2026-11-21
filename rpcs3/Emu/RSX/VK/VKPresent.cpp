@@ -481,9 +481,11 @@ bool VKGSRender::present_frame(const rsx::display_flip_info_t& info)
 	{
 		s_last_mem_log = get_system_time();
 		const auto resources = res();
-		rsx_log.notice("UWP VRAM: %s | pools MB: %s | texture cache %llu MB (%u unreleased), surface cache %llu MB | %s | %llu pipelines (%llu evicted, %llu descriptor pools released)",
+		const auto [pending, scopes] = vk::get_resource_manager()->uwp_pending_disposables();
+		rsx_log.notice("UWP VRAM: %s | pools MB: %s | texture cache %llu MB (%u unreleased), %s, surface cache %llu MB | %u disposed not yet freed (%u scopes) | %s | %llu pipelines (%llu evicted, %llu descriptor pools released)",
 			vk::get_current_mem_allocator()->get_heap_summary(), vk::vmm_get_usage_summary(),
-			resources->texture_cache.get_texture_memory_in_use() >> 20, resources->texture_cache.get_unreleased_textures_count(), resources->surface_cache.m_active_memory_used >> 20,
+			resources->texture_cache.get_texture_memory_in_use() >> 20, resources->texture_cache.get_unreleased_textures_count(),
+			resources->texture_cache.uwp_temp_usage_summary(), resources->surface_cache.m_active_memory_used >> 20, pending, scopes,
 			vk::get_descriptor_pool_stats(), m_prog_buffer ? m_prog_buffer->pipeline_count() : 0, s_evicted_pipelines, s_released_pools);
 	}
 #endif

@@ -1703,6 +1703,31 @@ namespace vk
 		return baseclass::get_unreleased_textures_count() + ::size32(m_cached_images);
 	}
 
+#ifdef RPCS3_UWP
+	// Bleach Soul Ignition's narrated pre-fight screen (3733 draws a frame) filled the texture pool to 896 MB within
+	// 5 s of an empty cache while the cached textures were 0-6 MB, and died out of video memory; the log could not
+	// say what held it.
+	std::string texture_cache::uwp_temp_usage_summary()
+	{
+		u64 copy_bytes = 0;
+		for (const auto& entry : m_temporary_subresource_cache)
+		{
+			if (const auto view = entry.second.second; view && view->image() && view->image()->memory)
+				copy_bytes += view->image()->memory->size();
+		}
+
+		// Images whose GPU work completes go back to the reusable pool from another thread
+		u32 reusable = 0;
+		{
+			std::lock_guard lock(m_cached_pool_lock);
+			reusable = ::size32(m_cached_images);
+		}
+
+		return fmt::format("temp copies %u (%llu MB), reusable images %u (%llu MB)", ::size32(m_temporary_subresource_cache),
+			copy_bytes >> 20, reusable, m_cached_memory_size.load() >> 20);
+	}
+#endif
+
 	u64 texture_cache::get_temporary_memory_in_use() const
 	{
 		// TODO: Technically incorrect, we should have separate metrics for cached evictable resources (this value) and temporary active resources.

@@ -543,5 +543,10 @@ namespace vk
 		u64 get_temporary_memory_in_use() const;
 
 		bool is_overallocated() const;
+
+#ifdef RPCS3_UWP
+		// What holds the texture pool besides the cached textures: temporary copies in use and the reusable image pool
+		std::string uwp_temp_usage_summary();
+#endif
 	};
 }

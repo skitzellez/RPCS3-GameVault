@@ -1283,9 +1283,14 @@ void VKGSRender::uwp_trim_texture_cache()
 		return;
 	}
 
+	// Every memory type counts: on the Xbox textures go to type 2, and type 0 alone (device_local) never got
+	// near the trigger: none of the 0.1.35.24 logs shows it running. The trigger is VMA's budget (819 MB under the 1024 MB cap): Bleach Soul
+	// Ignition lost the device past it at 868 MB, RB2 and J-Stars run below it at up to 737 MB.
 	const auto mem_info = m_device->get_memory_mapping();
-	const u64 used = vk::vmm_get_application_memory_usage(mem_info.device_local);
-	if (!mem_info.device_local_total_bytes || used < (mem_info.device_local_total_bytes / 100) * 85)
+	const u64 used = vk::vmm_get_total_application_memory_usage();
+	const u64 budget = vk::get_current_mem_allocator()->get_budget_bytes();
+	const u64 limit = budget && budget < mem_info.device_local_total_bytes ? budget : (mem_info.device_local_total_bytes / 100) * 85;
+	if (!limit || used < limit)
 	{
 		return;
 	}
@@ -1330,8 +1335,8 @@ void VKGSRender::uwp_trim_texture_cache()
 		m_samplers_dirty.store(true);
 	}
 
-	rsx_log.warning("UWP: video memory at %lluM of %lluM, trimmed the texture cache on the frame boundary (%s)",
-		used >> 20, mem_info.device_local_total_bytes >> 20, relieved ? "textures evicted" : "nothing to evict");
+	rsx_log.warning("UWP: video memory at %lluM, over the %lluM limit, trimmed the texture cache on the frame boundary (%s)",
+		used >> 20, limit >> 20, relieved ? "textures evicted" : "nothing to evict");
 
 	// Evicting costs a hard sync and re-uploads. Don't repeat it every frame if it doesn't help.
 	s_next_check = now + (relieved ? 1'000'000 : 10'000'000);

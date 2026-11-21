@@ -348,6 +348,37 @@ namespace vk
 		return max_usage;
 	}
 
+	u64 mem_allocator_vma::get_budget_bytes()
+	{
+		std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets{};
+		vmaGetHeapBudgets(m_allocator, budgets.data());
+
+		if (::size32(budgets) > m_rebar_heap_idx)
+		{
+			budgets[m_rebar_heap_idx].budget = 0;
+		}
+
+		// Same heap as get_memory_usage(): the fullest one
+		float max_usage = -1.f;
+		u64 result = 0;
+		for (const auto& info : budgets)
+		{
+			if (!info.budget)
+			{
+				break;
+			}
+
+			const float this_usage = (info.usage * 100.f) / info.budget;
+			if (this_usage > max_usage)
+			{
+				max_usage = this_usage;
+				result = info.budget;
+			}
+		}
+
+		return result;
+	}
+
 	std::string mem_allocator_vma::get_heap_summary()
 	{
 		std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> budgets{};

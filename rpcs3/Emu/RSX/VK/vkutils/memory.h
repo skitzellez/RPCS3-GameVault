@@ -100,6 +100,9 @@ namespace vk
 		// Per-heap usage, for memory logs.
 		virtual std::string get_heap_summary() { return {}; }
 
+		// Budget of the heap that get_memory_usage() reports as fullest, in bytes (0 = unknown).
+		virtual u64 get_budget_bytes() { return 0; }
+
 	protected:
 		VkDevice m_device;
 		VkFlags  m_allocation_flags;
@@ -131,6 +134,7 @@ namespace vk
 		void set_fastest_allocation_flags() override;
 
 		std::string get_heap_summary() override;
+		u64 get_budget_bytes() override;
 
 	private:
 		VmaAllocator m_allocator;
@@ -214,6 +218,9 @@ namespace vk
 	u64  vmm_get_application_memory_usage(const memory_type_info& memory_type);
 	u64  vmm_get_application_pool_usage(vmm_allocation_pool pool);
 	std::string vmm_get_usage_summary();
+#ifdef RPCS3_UWP
+	u64  vmm_get_total_application_memory_usage();
+#endif
 	bool vmm_handle_memory_pressure(rsx::problem_severity severity);
 	rsx::problem_severity vmm_determine_memory_load_severity();
 

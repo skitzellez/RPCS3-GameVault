@@ -227,6 +227,22 @@ namespace vk
 		return result;
 	}
 
+#ifdef RPCS3_UWP
+	// Last level vmm_determine_memory_load_severity returned, so each level is logged once when reached
+	static atomic_t<rsx::problem_severity> s_logged_severity{rsx::problem_severity::low};
+
+	// Usage over every memory type: on the Xbox all of them sit on the one device-local heap (see below)
+	u64 vmm_get_total_application_memory_usage()
+	{
+		reader_lock lock(g_vmm_stats.mutex);
+
+		u64 result = 0;
+		for (const auto& [type, size] : g_vmm_stats.memory_usage)
+			result += size.observe();
+		return result;
+	}
+#endif
+
 	rsx::problem_severity vmm_determine_memory_load_severity()
 	{
 		reader_lock lock(g_vmm_stats.mutex);
@@ -269,37 +285,53 @@ namespace vk
 			u64 local_memory_usage = 0;
 			for (const auto& [type, size] : g_vmm_stats.memory_usage)
 				local_memory_usage += size.observe();
+
+			// The headroom below is sized for a desktop card. Against the 1024 MB cap, at 200% resolution scale it asks
+			// for all 1024 MB free and at 300% for more than the cap, so from 512 MB used the level VMA set would stand:
+			// fatal (a full GPU sync and eviction) on every frame. Keep the 100% headroom: moderate from 768 MB used,
+			// the level VMA set only from 960 MB. (RB2 and J-Stars run at up to 737 MB, Bleach crashed at 868 MB.)
+			const auto res_scale = std::min(rsx::get_current_renderer()->resolution_scaling_config.scale_factor(), 1.f);
 #else
 			const auto local_memory_usage = vmm_get_application_memory_usage_impl(mem_info.device_local);
+			const auto res_scale = rsx::get_current_renderer()->resolution_scaling_config.scale_factor();
 #endif
+			const u64 device_local_total = mem_info.device_local_total_bytes;
 
 			constexpr u64 _1M = 0x100000;
-			const auto res_scale = rsx::get_current_renderer()->resolution_scaling_config.scale_factor();
 			const auto mem_threshold_1 = static_cast<u64>(256 * res_scale * res_scale) * _1M;
 			const auto mem_threshold_2 = static_cast<u64>(64 * res_scale * res_scale) * _1M;
 
-			if (local_memory_usage < (mem_info.device_local_total_bytes / 2) ||                   // Less than 50% VRAM usage OR
-				(mem_info.device_local_total_bytes - local_memory_usage) > mem_threshold_1)       // Enough to hold all required resources left
+			if (local_memory_usage < (device_local_total / 2) ||                   // Less than 50% VRAM usage OR
+				(local_memory_usage < device_local_total && (device_local_total - local_memory_usage) > mem_threshold_1))       // Enough to hold all required resources left
 			{
 				// Lower severity to avoid slowing performance too much
 				load_severity = rsx::problem_severity::low;
 			}
-			else if ((mem_info.device_local_total_bytes - local_memory_usage) > mem_threshold_2)  // Enough to hold basic resources like textures, buffers, etc
+			else if (local_memory_usage < device_local_total && (device_local_total - local_memory_usage) > mem_threshold_2)  // Enough to hold basic resources like textures, buffers, etc
 			{
 				// At least 512MB left, do not overreact
 				load_severity = rsx::problem_severity::moderate;
 			}
 
-			if (load_severity >= rsx::problem_severity::moderate)
+#ifdef RPCS3_UWP
+			// This runs twice a frame: log a level once, when it is reached, not 120 times a second
+			const bool log_level = load_severity != s_logged_severity.load();
+#else
+			constexpr bool log_level = true;
+#endif
+			if (load_severity >= rsx::problem_severity::moderate && log_level)
 			{
 				// NOTE: For some reason fmt::format with a sized float followed by percentage sign causes random crashing.
 				// This is a bug unrelated to this, but explains why we're going with integral percentages here.
-				const auto application_memory_load = (local_memory_usage * 100) / mem_info.device_local_total_bytes;
+				const auto application_memory_load = (local_memory_usage * 100) / device_local_total;
 				rsx_log.warning("Actual device memory used by internal allocations is %lluM (%llu%%)", local_memory_usage / 0x100000, application_memory_load);
 				rsx_log.warning("Video memory usage is at %d%%. Will attempt to reclaim some resources.", static_cast<int>(vmm_load));
 			}
 		}
 
+#ifdef RPCS3_UWP
+		s_logged_severity.store(load_severity);
+#endif
 		return load_severity;
 	}
 

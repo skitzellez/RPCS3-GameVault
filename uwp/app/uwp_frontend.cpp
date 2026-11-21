@@ -32,6 +32,8 @@
 #include "Emu/IdManager.h"
 #include "Emu/savestate_utils.hpp"
 #include "Emu/Cell/Modules/sceNpTrophy.h"
+
+namespace audio { void configure_audio(bool force_reset); } // Emu/Cell/Modules/cellAudio.cpp
 #include "Crypto/unpkg.h"
 #include "Utilities/Thread.h"
 #include "Utilities/File.h"
@@ -1089,6 +1091,14 @@ namespace uwp_frontend
 			{
 				save_settings();
 				return;
+			}
+			// Spartan: audio buffering, buffer length and time stretching apply to the running game, as in desktop
+			// RPCS3's settings dialog (cellAudio restarts its backend only when one of them changed). Before, they
+			// waited for the next boot (J-Stars: a longer buffer set mid-match did nothing).
+			if (node == &g_cfg.audio.enable_buffering || node == &g_cfg.audio.desired_buffer_duration ||
+				node == &g_cfg.audio.enable_time_stretching || node == &g_cfg.audio.time_stretching_threshold)
+			{
+				g_host.run_on_main([]() { audio::configure_audio(false); });
 			}
 			g_host.run_on_main([names = node_path(node), value = node->to_string()]()
 			{

@@ -1357,7 +1357,10 @@ namespace
 			// the texture and surface caches only start evicting long after the app is out of memory
 			// (Watch Dogs). Cap it; LocalState/vram_limit holds another size in MB (256-65536).
 			{
-				u32 vram_mb = 1536;
+				// Spartan: 1024 instead of 1536. With 1536, Bleach Soul Ignition's video memory sat at 1152 of
+				// the 1228 MB budget and frames froze for 0.7-1.4 s in present and texture upload (the GPU waiting,
+				// RSX CPU ~0); with 1024 on the same console: 16.4 -> 1.8 slow frames a minute, 30 fps held.
+				u32 vram_mb = 1024;
 				if (fs::file f{g_local_dir + "vram_limit"})
 				{
 					const std::string text = f.to_string();
@@ -1780,6 +1783,33 @@ namespace
 			serial = g_frame_serial;
 		}
 
+		// Spartan: short stalls (the J-Stars stutter: 60-300 ms frames with RSX idle, nothing logged). Once per stall,
+		// 80 ms in, each PPU thread's function (running or waiting) and the running SPU count are tallied; the tally
+		// goes to the log every 10 s, so the game function the frame waits on shows up without logging every stall.
+		static u64 s_frame_at = 0;
+		static bool s_sampled = false;
+		static std::map<std::string, u32> s_tally;
+		static u32 s_stalls = 0;
+		static u64 s_tally_at = 0;
+		const u64 now_us = get_system_time();
+		if (!s_tally_at)
+			s_tally_at = now_us;
+		if (now_us - s_tally_at >= 10'000'000)
+		{
+			if (s_stalls)
+			{
+				std::vector<std::pair<u32, std::string>> top;
+				for (const auto& [k, n] : s_tally)
+					top.emplace_back(n, k);
+				std::sort(top.begin(), top.end(), std::greater<>());
+				std::string text;
+				for (usz i = 0; i < std::min<usz>(top.size(), 14); i++)
+					fmt::append(text, "%s %s x%u", i ? ";" : "", top[i].second, top[i].first);
+				sys_log.notice("UWP short stalls: %u in 10 s (sampled 80 ms in):%s", s_stalls, text);
+			}
+			s_tally.clear(), s_stalls = 0, s_tally_at = now_us;
+		}
+
 		if (serial != last_serial || !last_change)
 		{
 			if (reports)
@@ -1787,7 +1817,26 @@ namespace
 			last_serial = serial;
 			last_change = ticks;
 			reports = 0;
+			s_frame_at = now_us, s_sampled = false;
 			return;
+		}
+
+		if (!s_sampled && s_frame_at && now_us - s_frame_at >= 80'000)
+		{
+			s_sampled = true;
+			s_stalls++;
+			u32 spu_running = 0;
+			idm::select<named_thread<ppu_thread>>([&](u32, ppu_thread& ppu)
+			{
+				const char* func = ppu.current_function ? ppu.current_function : ppu.last_function;
+				const bool waiting = !!(ppu.state & cpu_flag::wait);
+				s_tally[fmt::format("%s:%s(%s)", ppu.get_name(), func ? func : "-", waiting ? "w" : "RUN")]++;
+			});
+			idm::select<named_thread<spu_thread>>([&](u32, spu_thread& spu)
+			{
+				spu_running += !(spu.state & cpu_flag::wait);
+			});
+			s_tally[fmt::format("SPUs running %u", spu_running)]++;
 		}
 
 		const u32 idle = ticks - last_change;

@@ -1322,8 +1322,10 @@ void VKGSRender::uwp_trim_texture_cache()
 		m_samplers_dirty.store(true);
 	}
 
-	rsx_log.warning("UWP: video memory at %lluM, over the %lluM limit, trimmed the texture cache on the frame boundary (%s)",
-		used >> 20, limit >> 20, relieved ? "textures evicted" : "nothing to evict");
+	const auto [pending, scopes] = vk::get_resource_manager()->uwp_pending_disposables();
+	rsx_log.warning("UWP: video memory at %lluM, over the %lluM limit, trimmed the texture cache on the frame boundary (%s) | pools MB: %s | texture cache %llu MB, %s | %u disposed not yet freed (%u scopes)",
+		used >> 20, limit >> 20, relieved ? "textures evicted" : "nothing to evict", vk::vmm_get_usage_summary(),
+		resources->texture_cache.get_texture_memory_in_use() >> 20, resources->texture_cache.uwp_temp_usage_summary(), pending, scopes);
 
 	// Evicting costs a hard sync and re-uploads. Don't repeat it every frame if it doesn't help.
 	s_next_check = now + (relieved ? 1'000'000 : 10'000'000);

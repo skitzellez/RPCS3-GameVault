@@ -205,6 +205,18 @@ namespace vk
 
 		void trim();
 
+#ifdef RPCS3_UWP
+		// For the VRAM log: objects disposed but not freed yet (their GPU work has not completed), and in how many scopes
+		std::pair<usz, usz> uwp_pending_disposables() const
+		{
+			reader_lock lock(m_eid_map_lock);
+			usz count = 0;
+			for (const auto& scope : m_eid_map)
+				count += scope.m_disposables.size();
+			return { count, m_eid_map.size() };
+		}
+#endif
+
 		std::vector<const gpu_debug_marker*> gather_debug_markers() const
 		{
 			reader_lock lock(m_eid_map_lock);

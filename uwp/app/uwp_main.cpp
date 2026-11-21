@@ -1792,6 +1792,9 @@ namespace
 		static std::map<std::string, u32> s_tally;
 		static u32 s_stalls = 0;
 		static u64 s_tally_at = 0;
+		// Host CPU time per PPU/SPU thread id at the last new frame, and the sums over the sampled stalls.
+		static std::unordered_map<u32, u64> s_cpu_at_frame;
+		static u64 s_cpu_main_us = 0, s_cpu_ppu_us = 0, s_cpu_spu_us = 0, s_cpu_span_us = 0;
 		const u64 now_us = get_system_time();
 		if (!s_tally_at)
 			s_tally_at = now_us;
@@ -1804,7 +1807,7 @@ namespace
 				std::vector<std::tuple<int, u32, std::string>> top;
 				for (const auto& [k, n] : s_tally)
 				{
-					const bool key = k.find("main_thread") != umax || k.find("(RUN)") != umax || k.starts_with("SPUs running");
+					const bool key = k.find("main_thread") != umax || k.find("(RUN)") != umax || k.find("(SLOT)") != umax || k.find("(Q)") != umax || k.starts_with("SPUs running");
 					top.emplace_back(key ? 0 : 1, n, k);
 				}
 				std::sort(top.begin(), top.end(), [](const auto& a, const auto& b)
@@ -1819,8 +1822,15 @@ namespace
 				for (usz i = 0; i < top.size(); i++)
 					fmt::append(text, "%s %s x%u", i ? ";" : "", std::get<2>(top[i]), std::get<1>(top[i]));
 				sys_log.notice("UWP short stalls: %u in 10 s (sampled 80 ms in):%s", s_stalls, text);
+				// Per stall, from the last frame to the sample: CPU time the game's threads got. Main thread near the
+				// span = it computes; near 0 while not blocked = no core for it; all threads near 8x span = Xbox full.
+				const f64 n = s_stalls;
+				sys_log.notice("UWP short stalls CPU: per stall %.0f ms since the last frame: main thread %.0f ms, all PPU threads %.0f ms, all SPU threads %.0f ms (%.1f host threads busy)",
+					s_cpu_span_us / n / 1000., s_cpu_main_us / n / 1000., s_cpu_ppu_us / n / 1000., s_cpu_spu_us / n / 1000.,
+					s_cpu_span_us ? static_cast<f64>(s_cpu_ppu_us + s_cpu_spu_us) / s_cpu_span_us : 0.);
 			}
 			s_tally.clear(), s_stalls = 0, s_tally_at = now_us;
+			s_cpu_main_us = s_cpu_ppu_us = s_cpu_spu_us = s_cpu_span_us = 0;
 		}
 
 		if (serial != last_serial || !last_change)
@@ -1831,6 +1841,9 @@ namespace
 			last_change = ticks;
 			reports = 0;
 			s_frame_at = now_us, s_sampled = false;
+			s_cpu_at_frame.clear();
+			idm::select<named_thread<ppu_thread>>([&](u32 id, named_thread<ppu_thread>& ppu) { s_cpu_at_frame[id] = thread_ctrl::get_cpu_time_us(ppu); });
+			idm::select<named_thread<spu_thread>>([&](u32 id, named_thread<spu_thread>& spu) { s_cpu_at_frame[id] = thread_ctrl::get_cpu_time_us(spu); });
 			return;
 		}
 
@@ -1839,16 +1852,42 @@ namespace
 			s_sampled = true;
 			s_stalls++;
 			u32 spu_running = 0;
-			idm::select<named_thread<ppu_thread>>([&](u32, ppu_thread& ppu)
+			// The guest scheduler lets only g_cfg.core.ppu_threads (2) PPU threads run at once; the other ready ones
+			// wait for a slot (LV2 suspended). Tag: SLOT = holds one, Q = ready but waiting for one, w = blocked.
+			// CPU = host CPU time each thread got since the last frame: tells "computing" from "waiting" from
+			// "runnable but the Xbox gave it no core".
+			// The slot pointers are taken under the scheduler lock and then only compared (never dereferenced), so
+			// the idm walk below does not nest inside lv2_obj::g_mutex.
+			const ppu_thread* slot0 = nullptr;
+			const ppu_thread* slot1 = nullptr;
+			{
+				reader_lock lock(lv2_obj::g_mutex);
+				slot0 = lv2_obj::get_running_ppu(0);
+				slot1 = lv2_obj::get_running_ppu(1);
+			}
+			idm::select<named_thread<ppu_thread>>([&](u32 id, named_thread<ppu_thread>& ppu)
 			{
 				const char* func = ppu.current_function ? ppu.current_function : ppu.last_function;
-				const bool waiting = !!(ppu.state & cpu_flag::wait);
-				s_tally[fmt::format("%s:%s(%s)", ppu.get_name(), func ? func : "-", waiting ? "w" : "RUN")]++;
+				const auto st = +ppu.state;
+				const ppu_thread* self = &ppu;
+				const char* tag = self == slot0 || self == slot1 ? "SLOT" : ppu.ack_suspend && (st & cpu_flag::suspend) ? "Q" : st & cpu_flag::wait ? "w" : "RUN";
+				const std::string name = ppu.get_name();
+				s_tally[fmt::format("%s:%s(%s)", name, func ? func : "-", tag)]++;
+				const u64 c = thread_ctrl::get_cpu_time_us(ppu);
+				const auto it = s_cpu_at_frame.find(id);
+				const u64 d = it != s_cpu_at_frame.end() && c >= it->second ? c - it->second : 0;
+				s_cpu_ppu_us += d;
+				if (name.ends_with("main_thread"))
+					s_cpu_main_us += d;
 			});
-			idm::select<named_thread<spu_thread>>([&](u32, spu_thread& spu)
+			idm::select<named_thread<spu_thread>>([&](u32 id, named_thread<spu_thread>& spu)
 			{
 				spu_running += !(spu.state & cpu_flag::wait);
+				const u64 c = thread_ctrl::get_cpu_time_us(spu);
+				const auto it = s_cpu_at_frame.find(id);
+				s_cpu_spu_us += it != s_cpu_at_frame.end() && c >= it->second ? c - it->second : 0;
 			});
+			s_cpu_span_us += now_us - s_frame_at;
 			s_tally[fmt::format("SPUs running %u", spu_running)]++;
 		}
 

@@ -116,11 +116,19 @@ struct syscache_info
 			return;
 		}
 
+#ifndef RPCS3_UWP
 		if (!retain_caches)
 		{
 			vfs::host::remove_all(cache_root + cache_id, cache_root, &g_mp_sys_dev_hdd1, true, false, true);
 			return;
 		}
+#else
+		// Spartan: keep the game's cache when the game is stopped from the app, as a PS3 does when a game is quit
+		// to the XMB. Removing it made PlayStation All-Stars Battle Royale copy ~400 MB of disc archives into its
+		// cache again on every start (minutes on the Xbox's drive, menu frozen meanwhile). A crash still leaves the
+		// corruption indicator behind, so a half-written cache is cleared at the next start; cellSysCacheClear still
+		// clears it when the game asks.
+#endif
 
 		idm::select<lv2_fs_object, lv2_file>([](u32 /*id*/, lv2_file& file)
 		{

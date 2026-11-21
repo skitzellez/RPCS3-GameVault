@@ -62,6 +62,7 @@ rsx::frame_capture_data frame_capture;
 
 extern CellGcmOffsetTable offsetTable;
 extern thread_local std::string(*g_tls_log_prefix)();
+extern bool _sys_rsx_send_event(rsx::context* ctx, u64 data1, u64 event_flags, u64 data3, std::unique_lock<shared_mutex>* lock);
 
 #ifdef RPCS3_UWP
 namespace vk
@@ -963,7 +964,7 @@ namespace rsx
 
 		for (context* ctx : contexts)
 		{
-			if (!send_event(ctx, 0, ctx->fw.unsent_gcm_events.exchange(0), 0))
+			if (!_sys_rsx_send_event(ctx, 0, ctx->fw.unsent_gcm_events.exchange(0), 0, nullptr))
 			{
 				return;
 			}
@@ -2216,7 +2217,7 @@ namespace rsx
 			// Every lv2 context sees IO unmaps
 			for_each_context([&](context* ctx)
 			{
-				send_event(ctx, 0, event_data1, event_data2);
+				_sys_rsx_send_event(ctx, 0, event_data1, event_data2, nullptr);
 			});
 		}
 	}

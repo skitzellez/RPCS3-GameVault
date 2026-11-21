@@ -69,6 +69,7 @@
 #include <functional>
 #include <atomic>
 #include <map>
+#include <tuple>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -1798,13 +1799,25 @@ namespace
 		{
 			if (s_stalls)
 			{
-				std::vector<std::pair<u32, std::string>> top;
+				// Every entry, the ones that answer "what holds the frame" first: the main thread, threads running
+				// at the sample and the running SPU count; then the rest by count. (A cap of 14 cut exactly these.)
+				std::vector<std::tuple<int, u32, std::string>> top;
 				for (const auto& [k, n] : s_tally)
-					top.emplace_back(n, k);
-				std::sort(top.begin(), top.end(), std::greater<>());
+				{
+					const bool key = k.find("main_thread") != umax || k.find("(RUN)") != umax || k.starts_with("SPUs running");
+					top.emplace_back(key ? 0 : 1, n, k);
+				}
+				std::sort(top.begin(), top.end(), [](const auto& a, const auto& b)
+				{
+					if (std::get<0>(a) != std::get<0>(b))
+						return std::get<0>(a) < std::get<0>(b);
+					if (std::get<1>(a) != std::get<1>(b))
+						return std::get<1>(a) > std::get<1>(b);
+					return std::get<2>(a) < std::get<2>(b);
+				});
 				std::string text;
-				for (usz i = 0; i < std::min<usz>(top.size(), 14); i++)
-					fmt::append(text, "%s %s x%u", i ? ";" : "", top[i].second, top[i].first);
+				for (usz i = 0; i < top.size(); i++)
+					fmt::append(text, "%s %s x%u", i ? ";" : "", std::get<2>(top[i]), std::get<1>(top[i]));
 				sys_log.notice("UWP short stalls: %u in 10 s (sampled 80 ms in):%s", s_stalls, text);
 			}
 			s_tally.clear(), s_stalls = 0, s_tally_at = now_us;

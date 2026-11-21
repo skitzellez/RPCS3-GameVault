@@ -445,6 +445,12 @@ public:
 	u64 m_dynamic_period = 0;
 	f32 m_average_playtime = 0.0f;
 	bool m_backend_failed = false;
+
+	// Spartan: audio stutter telemetry (cell_audio_thread::operator(), logged every 10 s)
+	u64 m_tele_at = 0;
+	u64 m_tele_min_playtime = umax;
+	f32 m_tele_min_ratio = 1.0f;
+	u32 m_tele_dropped = 0, m_tele_partial = 0, m_tele_low = 0, m_tele_passes = 0, m_tele_mixed = 0;
 	bool m_audio_should_restart = false;
 
 	// Whether we already reported that a port carries front channel audio only. Diagnostics for a condition

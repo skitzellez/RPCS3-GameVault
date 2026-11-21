@@ -1041,6 +1041,31 @@ void cell_audio_thread::operator()()
 			const u32 untouched    = std::get<2>(tag_info);
 			const u32 incomplete   = std::get<3>(tag_info);
 
+			// Spartan: audio stutter telemetry, logged every 10 s while ports are active. Blocks dropped (the game
+			// filled none of its buffers in time), blocks mixed partly silent, the lowest queued playtime and the
+			// lowest time-stretch ratio, so a crackle in the log has a cause next to it.
+			if (active_ports)
+			{
+				if (!m_tele_at)
+					m_tele_at = timestamp;
+				m_tele_min_playtime = std::min<u64>(m_tele_min_playtime, enqueued_playtime);
+				m_tele_min_ratio = std::min<f32>(m_tele_min_ratio, frequency_ratio);
+				m_tele_low += enqueued_playtime < cfg.audio_block_period * 2;
+				m_tele_passes++;
+				if (timestamp - m_tele_at >= 10'000'000)
+				{
+					if (m_tele_dropped || m_tele_partial || m_tele_low || m_tele_min_ratio < RESAMPLER_MAX_FREQ_VAL)
+					{
+						cellAudio.notice("UWP audio: %u blocks dropped (game late), %u mixed partly silent, %u passes with under %u ms queued, "
+							"min queued %u ms (wanted %u), min speed %.2f, %u mixed, ports %u",
+							m_tele_dropped, m_tele_partial, m_tele_low, cfg.audio_block_period * 2 / 1000, m_tele_min_playtime / 1000,
+							cfg.desired_buffer_duration / 1000, m_tele_min_ratio, m_tele_mixed, active_ports);
+					}
+					m_tele_at = timestamp, m_tele_dropped = 0, m_tele_partial = 0, m_tele_low = 0, m_tele_passes = 0, m_tele_mixed = 0;
+					m_tele_min_playtime = umax, m_tele_min_ratio = static_cast<f32>(RESAMPLER_MAX_FREQ_VAL);
+				}
+			}
+
 			// Ratio between the rolling average of the audio period, and the desired audio period
 			const f32 average_playtime_ratio = m_average_playtime / cfg.audio_buffer_length;
 
@@ -1131,6 +1156,7 @@ void cell_audio_thread::operator()()
 					{
 						// There's no audio in any buffer, simply advance time and hope the game recovers
 						cellAudio.trace("advancing time: untouched=%u/%u (expected=%u), enqueued_buffers=%llu", untouched, active_ports, untouched_expected, enqueued_buffers);
+						m_tele_dropped++;
 						advance(timestamp);
 						continue;
 					}
@@ -1141,6 +1167,7 @@ void cell_audio_thread::operator()()
 					// they contribute silence, which is exactly what they hold.
 					cellAudio.trace("mixing partially untouched buffers: untouched=%u/%u, enqueued_buffers=%llu", untouched, active_ports, enqueued_buffers);
 					waited_long_enough = true;
+					m_tele_partial++;
 				}
 				else
 				{
@@ -1174,6 +1201,8 @@ void cell_audio_thread::operator()()
 
 			// Store number of untouched buffers for future reference
 			expect_untouched(untouched);
+
+			m_tele_mixed++;
 
 			// Log if we enqueued untouched/incomplete buffers
 			if (untouched > 0 || incomplete > 0)

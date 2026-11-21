@@ -260,7 +260,18 @@ namespace vk
 
 			// Query actual usage for comparison. Maybe we just have really fragmented memory...
 			const auto mem_info = get_current_renderer()->get_memory_mapping();
+#ifdef RPCS3_UWP
+			// Spartan: on the Xbox (Dozen/D3D12) the device-local heap has several memory types and VMA places
+			// most allocations, every texture among them, in type 2 while device_local lists only type 0. Counting
+			// type 0 alone saw almost nothing, so this check always lowered the severity to low and nothing was
+			// reclaimed: Bleach Soul Ignition's pre-fight menu went to 868 MB of an 819 MB budget, frames took
+			// seconds and the GPU hung (device lost). The Xbox has one heap; count every memory type on it.
+			u64 local_memory_usage = 0;
+			for (const auto& [type, size] : g_vmm_stats.memory_usage)
+				local_memory_usage += size.observe();
+#else
 			const auto local_memory_usage = vmm_get_application_memory_usage_impl(mem_info.device_local);
+#endif
 
 			constexpr u64 _1M = 0x100000;
 			const auto res_scale = rsx::get_current_renderer()->resolution_scaling_config.scale_factor();

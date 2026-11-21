@@ -97,9 +97,24 @@ namespace vk
 
 	class descriptor_set
 	{
+#ifdef RPCS3_UWP
+		// Spartan (Xbox memory budget): every program has two of these and each reserved 16,448 entries in three
+		// arrays on first use (~0.9 MB a set, never freed). J-Stars Victory VS+ uses ~2,150 programs: ~4 GB of its
+		// 5 GB, then VK_ERROR_OUT_OF_DEVICE_MEMORY. Flushing at 256 entries keeps a set at ~28 KB. The arrays must
+		// never grow (pending writes point into them): a commit adds at most one table's descriptors (~40; layouts
+		// over 256 are logged in VKProgramPipeline.cpp) before on_bind() flushes at the threshold.
+		static constexpr size_t max_cache_size = 256;
+		static constexpr size_t max_overflow_size = 256;
+#else
 		static constexpr size_t max_cache_size = 16384;
 		static constexpr size_t max_overflow_size = 64;
+#endif
 		static constexpr size_t m_pool_size = max_cache_size + max_overflow_size;
+#ifdef RPCS3_UWP
+	public:
+		static constexpr size_t uwp_max_descriptors_per_commit = max_overflow_size;
+	private:
+#endif
 
 		void init(VkDescriptorSet new_set);
 

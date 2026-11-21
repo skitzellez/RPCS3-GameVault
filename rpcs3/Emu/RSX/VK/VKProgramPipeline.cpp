@@ -777,6 +777,20 @@ namespace vk
 				m_descriptor_types[i] = descriptor_type_map[i];
 			}
 
+#ifdef RPCS3_UWP
+			// Spartan: descriptor_set storage is sized for at most this many descriptors per commit (descriptors.h).
+			u32 total_descriptors = 0;
+			for (const auto& size : m_descriptor_pool_sizes)
+			{
+				total_descriptors += size.descriptorCount;
+			}
+			if (total_descriptors > vk::descriptor_set::uwp_max_descriptors_per_commit)
+			{
+				rsx_log.error("UWP: descriptor set layout with %u descriptors, over the %u a commit is sized for",
+					total_descriptors, static_cast<u32>(vk::descriptor_set::uwp_max_descriptors_per_commit));
+			}
+#endif
+
 			m_descriptor_set_layout = vk::descriptors::create_layout(bindings);
 		}
 

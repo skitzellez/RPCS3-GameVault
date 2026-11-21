@@ -73,6 +73,16 @@ namespace rsx
 			u64 start = get_system_time();
 			u64 last_check_val = start;
 
+#ifdef RPCS3_UWP
+			// For the app's stall report: which semaphore this wait is on and what it waits for
+			g_uwp_sema_wait_value.release(arg);
+			g_uwp_sema_wait_addr.release(addr);
+			struct uwp_sema_wait_clear
+			{
+				~uwp_sema_wait_clear() { g_uwp_sema_wait_addr.release(0); }
+			} uwp_sema_wait_clear_obj;
+#endif
+
 			while (sema != arg)
 			{
 				if (RSX(ctx)->test_stopped())

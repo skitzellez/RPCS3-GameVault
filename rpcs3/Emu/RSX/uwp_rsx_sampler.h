@@ -21,6 +21,15 @@ namespace rsx
 
 	extern atomic_t<u32> g_uwp_rsx_where;
 
+	// The semaphore an NV406E acquire is waiting on right now (0 = none) and the value it waits for.
+	extern atomic_t<u32> g_uwp_sema_wait_addr, g_uwp_sema_wait_value;
+
+	class thread;
+
+	// For the app's "no new frame" stall report: what the RSX thread is doing (phase, method, exact FIFO
+	// position, CPU time since the last call, any semaphore wait). Called from one thread only.
+	std::string uwp_rsx_stall_text(const thread* rsx);
+
 	// FIFO work counters, written by the RSX thread only (logged per slow frame and per 10 s).
 	struct uwp_fifo_counters
 	{

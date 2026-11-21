@@ -1616,7 +1616,9 @@ namespace
 		}
 
 		const u32 idle = ticks - last_change;
-		if (idle < 100 || idle % 100 != 0 || reports >= 20)
+		// Every second for 20 s, then every 30 s for 10 more minutes (All-Stars stayed frozen for 5 minutes and the
+		// reports had stopped at 20 s)
+		if (idle < 100 || idle % 100 != 0 || (reports >= 20 && (idle % 3000 != 0 || reports >= 40)))
 			return;
 
 		reports++;
@@ -1635,6 +1637,7 @@ namespace
 		{
 			fmt::append(out, "\n  RSX: get=0x%x put=0x%x last semaphore 0x%x (cmd at 0x%x)", +render->ctrl->get, +render->ctrl->put,
 				render->last_sema_addr, render->last_sema_cmd);
+			fmt::append(out, "\n  RSX: %s", rsx::uwp_rsx_stall_text(render));
 		}
 		sys_log.always()("%s", out);
 	}

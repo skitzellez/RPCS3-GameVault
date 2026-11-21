@@ -77,6 +77,8 @@ namespace rsx
 	static std::string g_uwp_hitch_text;
 
 	atomic_t<u32> g_uwp_rsx_where = 0;
+	atomic_t<u32> g_uwp_sema_wait_addr = 0, g_uwp_sema_wait_value = 0;
+	static atomic_t<const thread_base*> g_uwp_rsx_thread_base = nullptr; // the running RSX thread, for its CPU time
 	uwp_fifo_counters g_uwp_fifo;
 	thread_local bool g_uwp_on_rsx_thread = false;
 	static atomic_t<u32> g_uwp_rsx_frame = 0;
@@ -103,11 +105,13 @@ namespace rsx
 	// samples and the RSX thread's CPU time (low CPU time = it was waiting or not scheduled).
 	// A fatal error ends the RSX thread without unwinding its stack, so the stop flag is shared on the
 	// heap, and the sampler also ends when the next RSX run starts (the old thread object is gone then).
+	static constexpr const char* g_uwp_phase_names[uwp_phase_count] = { "other", "fifo", "fifo idle", "method", "flip",
+		"local task", "zcull", "fifo wait", "external pause", "semaphore", "frame limit", "submit", "query", "fence",
+		"invalidate", "fifo fetch", "fifo spin" };
+
 	static void uwp_rsx_sampler(const thread_base* rsx_thread, std::shared_ptr<atomic_t<bool>> stop, u32 run)
 	{
-		static constexpr const char* names[uwp_phase_count] = { "other", "fifo", "fifo idle", "method", "flip", "local task",
-			"zcull", "fifo wait", "external pause", "semaphore", "frame limit", "submit", "query", "fence", "invalidate",
-			"fifo fetch", "fifo spin" };
+		const auto& names = g_uwp_phase_names;
 
 		thread_ctrl::set_native_priority(1);
 
@@ -167,6 +171,47 @@ namespace rsx
 			else
 				hist.emplace_back(where, 1);
 		}
+	}
+
+	// The 1 ms sampler only logs when a frame ends, so a hang with no flip printed nothing about the RSX
+	// thread. PlayStation All-Stars froze with ctrl->get stuck, which only says where the FIFO was last fetched
+	// (the end of the fetched block in Atomic mode), not what the RSX thread was waiting in.
+	std::string uwp_rsx_stall_text(const thread* rsx)
+	{
+		static u64 s_last_cpu_us = 0, s_last_at_us = 0;
+
+		std::string out, name;
+		const u32 where = g_uwp_rsx_where.observe();
+		fmt::append(out, "RSX thread in %s", g_uwp_phase_names[std::min<u32>(where >> 16, uwp_phase_count - 1)]);
+
+		if (const u32 reg = where & 0xffff)
+		{
+			const auto [prefix, method] = get_method_name(reg, name);
+			fmt::append(out, " (%s)", name.empty() ? std::string(method) : name);
+		}
+
+		if (rsx && rsx->fifo_ctrl)
+		{
+			fmt::append(out, ", exec 0x%x cmd 0x%08x", rsx->fifo_ctrl->get_pos(), rsx->fifo_ctrl->last_cmd());
+		}
+
+		// CPU time grows by about the wall time when it spins, stays flat when it is blocked
+		if (const thread_base* t = g_uwp_rsx_thread_base.observe())
+		{
+			const u64 now = get_system_time(), cpu = t->get_cpu_time_us();
+			if (s_last_at_us && now > s_last_at_us && now - s_last_at_us <= 31'000'000 && cpu >= s_last_cpu_us)
+				fmt::append(out, ", CPU %.0f ms in the last %.0f ms", (cpu - s_last_cpu_us) / 1000., (now - s_last_at_us) / 1000.);
+			s_last_cpu_us = cpu, s_last_at_us = now;
+		}
+
+		if (const u32 addr = g_uwp_sema_wait_addr.observe())
+		{
+			fmt::append(out, ", semaphore acquire at 0x%x waits for 0x%x", addr, g_uwp_sema_wait_value.observe());
+			if (vm::check_addr(addr))
+				fmt::append(out, ", holds 0x%x", u32{vm::_ref<be_t<u32>>(addr)});
+		}
+
+		return out;
 	}
 #endif
 
@@ -989,11 +1034,14 @@ namespace rsx
 		{
 			std::shared_ptr<atomic_t<bool>> stop = std::make_shared<atomic_t<bool>>(false);
 			std::thread thread;
-			~uwp_sampler() { stop->release(true); if (thread.joinable()) thread.join(); }
+			~uwp_sampler() { g_uwp_rsx_thread_base.release(nullptr); stop->release(true); if (thread.joinable()) thread.join(); }
 		} uwp_sampler_obj;
 
 		if (const thread_base* self = thread_ctrl::get_current())
+		{
+			g_uwp_rsx_thread_base.release(self);
 			uwp_sampler_obj.thread = std::thread(uwp_rsx_sampler, self, uwp_sampler_obj.stop, g_uwp_rsx_runs.load());
+		}
 #endif
 
 		if (g_cfg.core.thread_scheduler != thread_scheduler_mode::os)

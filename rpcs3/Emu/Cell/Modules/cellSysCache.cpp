@@ -125,9 +125,33 @@ struct syscache_info
 #else
 		// Spartan: keep the game's cache when the game is stopped from the app, as a PS3 does when a game is quit
 		// to the XMB. Removing it made PlayStation All-Stars Battle Royale copy ~400 MB of disc archives into its
-		// cache again on every start (minutes on the Xbox's drive, menu frozen meanwhile). A crash still leaves the
-		// corruption indicator behind, so a half-written cache is cleared at the next start; cellSysCacheClear still
+		// cache again on every start (minutes on the Xbox's drive, menu frozen meanwhile). cellSysCacheClear still
 		// clears it when the game asks.
+		// Not when a cache file is still open and being written (written to, or created/truncated by this open): the
+		// game was stopped in the middle of writing it (the copy above is the likely moment), and a kept cache mounts
+		// as complete next time, truncated file and all. Such a cache is removed as before, so the next start copies
+		// it again. A file opened read-write but never written does not count.
+		if (!retain_caches)
+		{
+			std::string writing;
+			idm::select<lv2_fs_object, lv2_file>([&](u32 /*id*/, lv2_file& file)
+			{
+				if (writing.empty() && file.file && file.mp->flags & lv2_mp_flag::cache && file.flags & CELL_FS_O_ACCMODE &&
+					(file.writes_total.load() != 0 || (file.flags & (CELL_FS_O_CREAT | CELL_FS_O_TRUNC)) != 0))
+				{
+					writing = file.real_path;
+				}
+			});
+
+			if (!writing.empty())
+			{
+				cellSysutil.warning("Stopped while writing '%s': removing cache %s", writing, cache_root + cache_id);
+				vfs::host::remove_all(cache_root + cache_id, cache_root, &g_mp_sys_dev_hdd1, true, false, true);
+				return;
+			}
+
+			cellSysutil.notice("Keeping cache %s for the next start", cache_root + cache_id);
+		}
 #endif
 
 		idm::select<lv2_fs_object, lv2_file>([](u32 /*id*/, lv2_file& file)

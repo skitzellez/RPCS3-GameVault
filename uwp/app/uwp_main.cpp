@@ -127,6 +127,7 @@ extern "C" void* uwp_lazy_lookup(const wchar_t* dll, const char* name); // uwp_l
 namespace rsx { extern u32 g_uwp_rsx_idle_sleep_us; extern bool g_uwp_fifo_partial_line, g_uwp_fifo_retry_cap; } // RSXFIFO.cpp
 namespace rsx { extern atomic_t<u64> g_uwp_mem_poll_at_us, g_uwp_mem_poll_max_us; } // RSXThread.cpp
 namespace vk { extern bool g_uwp_async_present_copy; } // VKCommandStream.cpp
+namespace vk { extern bool g_uwp_texture_dma_upload; } // VKTexture.cpp
 extern u64 g_uwp_usleep_spin_us; // lv2.cpp
 extern bool g_uwp_um_wait; // lv2.cpp
 extern u32 g_uwp_spu_llvm_workers; // SPUCommonRecompiler.cpp
@@ -1108,6 +1109,10 @@ namespace
 			// (swapchain_uwp.hpp). An empty LocalState/sync_present_copy file keeps it on RSX.
 			vk::g_uwp_async_present_copy = !fs::is_file(g_local_dir + "sync_present_copy");
 			sys_log.always()("UWP: frame copy to the shell on %s", vk::g_uwp_async_present_copy ? "its own thread" : "the RSX thread");
+			// Large textures upload through the upload ring, not through DMA blocks that only grow (VKTexture.cpp).
+			// An empty LocalState/texture_dma_upload file brings back RPCS3's DMA-block ("zero-copy") uploads.
+			vk::g_uwp_texture_dma_upload = fs::is_file(g_local_dir + "texture_dma_upload");
+			sys_log.always()("UWP: texture uploads through %s", vk::g_uwp_texture_dma_upload ? "DMA blocks (RPCS3)" : "the upload ring");
 			// LLVM precompilation compiles every module in dev_flash (~580) before the XMB starts:
 			// 36+ minutes on the first boot on the Xbox. Without it only the modules that load get
 			// compiled (the rest when first used). An empty LocalState/precompile file turns it on.

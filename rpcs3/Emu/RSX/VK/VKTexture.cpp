@@ -18,6 +18,18 @@
 
 namespace vk
 {
+#ifdef RPCS3_UWP
+	// Spartan: RPCS3's "zero-copy" texture upload reads the texture from a DMA block, a buffer mirroring guest
+	// memory. Without passthrough DMA (off on the Xbox) a DMA block is a host-visible copy: load_dma memcpys the
+	// same bytes the upload ring would get, but blocks are never freed and neighbouring ones are merged by
+	// reallocating and recopying the whole chain. God of War III grew chains to 103 MB this way, and the merge
+	// that no longer fit came inside the uninterruptible texture upload, where on_vram_exhausted cannot run
+	// (fatal "Verification failed" at VKGSRender.cpp:1142). So, without passthrough DMA, textures go through the
+	// upload ring like small ones always do; GPU byteswap and deswizzle stay. An empty LocalState/texture_dma_upload
+	// file brings back RPCS3's behaviour (uwp_main.cpp).
+	bool g_uwp_texture_dma_upload = false;
+#endif
+
 	static void gpu_swap_bytes_impl(const vk::command_buffer& cmd, vk::buffer* buf, u32 element_size, u32 data_offset, u32 data_length)
 	{
 		if (element_size == 4)
@@ -1188,6 +1200,12 @@ namespace vk
 				caps.supports_byteswap = (image_linear_size >= 1024) || (image_setup_flags & source_is_gpu_resident);
 				caps.supports_hw_deswizzle = caps.supports_byteswap;
 				caps.supports_zero_copy = caps.supports_byteswap;
+#ifdef RPCS3_UWP
+				if (!g_uwp_texture_dma_upload && !rsx::get_current_renderer()->get_backend_config().supports_passthrough_dma)
+				{
+					caps.supports_zero_copy = false;
+				}
+#endif
 				caps.supports_vtc_decoding = false;
 				check_hw_caps = false;
 			}

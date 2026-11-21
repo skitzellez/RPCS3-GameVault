@@ -286,11 +286,13 @@ namespace vk
 			for (const auto& [type, size] : g_vmm_stats.memory_usage)
 				local_memory_usage += size.observe();
 
-			// The headroom below is sized for a desktop card. Against the 1024 MB cap, at 200% resolution scale it asks
-			// for all 1024 MB free and at 300% for more than the cap, so from 512 MB used the level VMA set would stand:
-			// fatal (a full GPU sync and eviction) on every frame. Keep the 100% headroom: moderate from 768 MB used,
-			// the level VMA set only from 960 MB. (RB2 and J-Stars run at up to 737 MB, Bleach crashed at 868 MB.)
-			const auto res_scale = std::min(rsx::get_current_renderer()->resolution_scaling_config.scale_factor(), 1.f);
+			// The headroom below is sized for a desktop card and grows with the resolution scale squared. Against the
+			// 1024 MB cap, at 200% it asks for all 1024 MB free and at 300% for more than the cap, so from 512 MB used
+			// the level VMA set would stand: fatal (a full GPU sync and eviction) on every frame. Below 100% it shrinks
+			// instead (16 MB at 50%), and the check would stay low past the 868 MB where Bleach lost the device. Use the
+			// 100% headroom at every scale: moderate from 768 MB used, the level VMA set only from 960 MB. (RB2 and
+			// J-Stars run at up to 737 MB.)
+			constexpr f32 res_scale = 1.f;
 #else
 			const auto local_memory_usage = vmm_get_application_memory_usage_impl(mem_info.device_local);
 			const auto res_scale = rsx::get_current_renderer()->resolution_scaling_config.scale_factor();

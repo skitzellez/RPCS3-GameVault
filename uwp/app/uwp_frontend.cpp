@@ -1178,7 +1178,8 @@ namespace uwp_frontend
 		}
 
 		// ---- Package (.pkg) install ----
-		void start_package_install(const std::string& path, const std::string& title)
+		// boot_after (a .pkg started from Game Vault): the game it installs starts right after, instead of a message
+		void start_package_install(const std::string& path, const std::string& title, bool boot_after = false)
 		{
 			if (!g_host.no_storage.empty())
 			{
@@ -1195,9 +1196,10 @@ namespace uwp_frontend
 			g_job_title = "Installing " + title;
 			set_status(g_job_title + "...", col_warn);
 
-			std::thread([path, title, prog = g_job.get()]()
+			std::thread([path, title, boot_after, prog = g_job.get()]()
 			{
 				std::string error;
+				std::deque<std::string> booted;   // what the package installed that can be started
 				std::deque<package_reader> readers;
 				readers.emplace_back(path);
 
@@ -1231,6 +1233,7 @@ namespace uwp_frontend
 						std::this_thread::sleep_for(std::chrono::milliseconds(50));
 					}
 					worker();
+					booted = bootables;
 
 					if (result.error == package_install_result::error_type::app_version)
 						error = fmt::format("This update is for version %s of the game, but version %s is installed. Install the game or the earlier updates first.",
@@ -1252,6 +1255,18 @@ namespace uwp_frontend
 				}
 
 				g_installing = false;
+				if (error.empty() && boot_after && !booted.empty())
+				{
+					ui_log.success("UI: installed package %s (%u licenses), starting %s", path, licenses, booted.front());
+					rescan();
+					const std::string target = booted.front();
+					g_host.run_on_main([target]()
+					{
+						if (Emu.IsStopped(true) && !boot(target))
+							g_in_game = false;
+					});
+					return;
+				}
 				if (error.empty())
 				{
 					ui_log.success("UI: installed package %s", path);
@@ -2780,6 +2795,33 @@ namespace uwp_frontend
 		}
 		else
 			fs::write_file(last_game_file(), fs::rewrite, path); // (a network path isn't a game to reopen by itself)
+		// Game Vault 0.16.1.1323+: a PS3 package (.pkg, a PSN game) on a USB drive. Installed once (with the .rap
+		// licenses beside it), then started from the PS3 hard drive; the next time it starts straight away.
+		if (path.size() > 4 && fmt::to_upper(path.substr(path.size() - 4)) == ".PKG")
+		{
+			std::string tid;
+			if (fs::file f{path}; f && f.size() > 0x60)
+			{
+				char head[0x60]{};
+				f.read(head, sizeof(head));
+				const std::string content(head + 0x30, strnlen(head + 0x30, 0x30));   // UP0001-NPUB30001_00-...
+				if (std::memcmp(head, "\x7fPKG", 4) == 0 && content.size() >= 16)
+					tid = content.substr(7, 9);
+			}
+			const std::string hdd0 = g_host.no_storage.empty() ? rpcs3::utils::get_hdd0_dir() : std::string();
+			const std::string installed = hdd0 + "game/" + tid;
+			ui_log.notice("Game Vault: package '%s', title %s, installed: %s", path, tid, !tid.empty() && fs::is_file(installed + "/USRDIR/EBOOT.BIN"));
+			if (!tid.empty() && !hdd0.empty() && fs::is_file(installed + "/USRDIR/EBOOT.BIN"))
+			{
+				path = installed;   // installed before: start it
+			}
+			else
+			{
+				const std::string title = path.substr(path.find_last_of('/') + 1);
+				g_host.run_on_main([path, title]() { start_package_install(path, title, true); });
+				return;
+			}
+		}
 		set_status("Starting the game...", col_dim);
 		g_host.run_on_main([path]()
 		{

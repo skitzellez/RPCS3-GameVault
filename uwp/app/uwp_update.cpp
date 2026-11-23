@@ -4,6 +4,7 @@
 #include "util/logs.hpp"
 
 #include <windows.h>
+#include <appmodel.h>
 #include <curl/curl.h>
 
 #include <mutex>
@@ -18,7 +19,21 @@ namespace uwp_update
 		constexpr const char* c_url = "https://api.github.com/repos/emelin2004/rpcs3-xbox/releases?per_page=10";
 		constexpr usz c_max_answer = 2u << 20;
 
-		const std::string g_app_version = RPCS3_XBOX_VERSION;
+		// The installed package's version (the build-time one stays at the manifest's 0.1.35.1600:
+		// pack_gamevault.ps1 sets the real version only when it packs).
+		std::string package_version()
+		{
+			alignas(8) unsigned char buffer[2048];
+			UINT32 size = sizeof(buffer);
+			if (GetCurrentPackageId(&size, buffer) == ERROR_SUCCESS)
+			{
+				const auto& v = reinterpret_cast<const PACKAGE_ID*>(buffer)->version;
+				return fmt::format("%u.%u.%u.%u", v.Major, v.Minor, v.Build, v.Revision);
+			}
+			return RPCS3_XBOX_VERSION;
+		}
+
+		const std::string g_app_version = package_version();
 		std::mutex g_mutex;
 		atomic_t<status> g_status = status::unknown;
 		std::string g_latest;

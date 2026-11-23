@@ -1658,13 +1658,23 @@ error_code sys_fs_write(ppu_thread& ppu, u32 fd, vm::cptr<void> buf, u64 nbytes,
 		file->file.seek(0, fs::seek_end);
 	}
 
+	fs::g_tls_error = fs::error::ok;
 	const u64 written = file->op_write(buf, nbytes);
 	file->writes_total += written;
+	const fs::error write_error = fs::g_tls_error;
 
 	lock.unlock();
 	ppu.check_state();
 
 	*nwrite = written;
+
+	if (written < nbytes && write_error != fs::error::ok)
+	{
+		// UWP (Game Vault): the game hears "no space" instead of the app closing on a failed host write.
+		sys_fs.error("sys_fs_write(): only 0x%llx of 0x%llx bytes written to '%s' (host '%s'): %s", written, nbytes, file->name.data(), file->real_path, write_error);
+		return CELL_ENOSPC;
+	}
+
 	return CELL_OK;
 }
 

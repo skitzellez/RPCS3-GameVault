@@ -785,14 +785,25 @@ namespace fs
 				utils::memory_commit_lazy(data, size);
 #endif
 #ifdef RPCS3_UWP
-				// Name the file: a full drive otherwise ends the app as "Verification failed" with no path.
-				if (!WriteFile(m_handle, data, size, &nwritten, &ovl))
+				// A failed write no longer ends the app: it is tried 3 more times (a USB drive that drops out
+				// for a moment comes back), then the error goes to the caller (sys_fs_write tells the game
+				// "no space" and logs the guest path; GetFinalPathNameByHandle fails when the drive is gone).
+				BOOL ok = WriteFile(m_handle, data, size, &nwritten, &ovl);
+				for (int retry = 0; !ok && retry < 3; retry++)
+				{
+					Sleep(250);
+					nwritten = 0;
+					ok = WriteFile(m_handle, data, size, &nwritten, &ovl);
+				}
+
+				if (!ok)
 				{
 					const DWORD error = GetLastError();
-					wchar_t name[1024]{};
-					const DWORD len = GetFinalPathNameByHandleW(m_handle, name, 1023, FILE_NAME_NORMALIZED);
-					fmt::throw_exception("file::write of %u bytes at 0x%llx failed for '%s' (error=%s)", size, pos,
-						len && len < 1023 ? wchar_to_utf8(name) : std::string("?"), fmt::win_error{error, nullptr});
+					m_pos -= size;
+					g_tls_error = to_error(error);
+					if (g_tls_error == fs::error::unknown)
+						g_tls_error = fs::error::nospace;
+					return nwritten_sum;
 				}
 #else
 				ensure(WriteFile(m_handle, data, size, &nwritten, &ovl)); // "file::write"

@@ -16,6 +16,8 @@ git -C "$1" apply --check "$tc/mesa-dzn-psolib.patch" 2>/dev/null && git -C "$1"
 git -C "$1" apply --check "$tc/mesa-dzn-empty-copy.patch" 2>/dev/null && git -C "$1" apply "$tc/mesa-dzn-empty-copy.patch"
 # Clip image-to-image copies to the images (RPCS3 overshoots after a resolution scale change; D3D12 on the Xbox then fails Close()).
 git -C "$1" apply --check "$tc/mesa-dzn-copy-clamp.patch" 2>/dev/null && git -C "$1" apply "$tc/mesa-dzn-copy-clamp.patch"
+# Log why binding an image failed (HRESULT, device-removed reason, image size): GitHub #9 "GPU lost" after minutes.
+git -C "$1" apply --check "$tc/mesa-dzn-bindlog.patch" 2>/dev/null && git -C "$1" apply "$tc/mesa-dzn-bindlog.patch"
 # D3D12 command-list call tracer (logs the last calls when a command list fails to close).
 cp "$tc/mesa-dzn_trace.c" "$1/src/microsoft/vulkan/dzn_trace.c"
 cp "$tc/mesa-dzn_trace_macros.h" "$1/src/microsoft/vulkan/dzn_trace_macros.h"

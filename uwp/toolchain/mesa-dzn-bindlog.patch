@@ -1,0 +1,25 @@
+diff --git a/src/microsoft/vulkan/dzn_image.c b/src/microsoft/vulkan/dzn_image.c
+index b67d131..4faf8c0 100644
+--- a/src/microsoft/vulkan/dzn_image.c
++++ b/src/microsoft/vulkan/dzn_image.c
+@@ -853,8 +853,19 @@ dzn_BindImageMemory2(VkDevice dev,
+                                                    &IID_ID3D12Resource,
+                                                    (void **)&image->res);
+       }
+-      if (FAILED(hres))
++      if (FAILED(hres)) {
++         /* Xbox: say why (the HRESULT and the image), and the device-removed reason when that is it */
++         HRESULT removed = ID3D12Device_GetDeviceRemovedReason(device->dev);
++         mesa_loge("dzn: CreatePlacedResource failed 0x%08x (device removed reason 0x%08x): %ux%u x%u mips %u, "
++                   "format %u, flags 0x%x, dim %u, offset %llu, heap size %llu
++",
++                   (unsigned)hres, (unsigned)removed, (unsigned)image->desc.Width, (unsigned)image->desc.Height,
++                   (unsigned)image->desc.DepthOrArraySize, (unsigned)image->desc.MipLevels,
++                   (unsigned)image->desc.Format, (unsigned)(image->desc.Flags | mem->res_flags),
++                   (unsigned)image->desc.Dimension, (unsigned long long)bind_info->memoryOffset,
++                   (unsigned long long)mem->size);
+          return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
++      }
+    }
+ 
+    return VK_SUCCESS;

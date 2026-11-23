@@ -41,7 +41,7 @@
             <Image Source="ms-appx:///Assets/GameVaultLogo.png" Height="26" Width="26" Stretch="Uniform" VerticalAlignment="Center"/>
             <StackPanel Margin="7,0,0,0" VerticalAlignment="Center">
               <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="#FF35B8FF">Game Vault</TextBlock>
-              <TextBlock FontSize="9" Opacity="0.55">based on RPCS3 for Xbox by emelin</TextBlock>
+              <TextBlock FontSize="9" Opacity="0.55">based on RPCS3 for Xbox by emelin · fixes by PSYCHOsmurf</TextBlock>
             </StackPanel>
           </StackPanel>
           <!-- The anonymous telemetry ID (uwp_telemetry.cpp), so a user can name their reports. -->

@@ -736,7 +736,13 @@ namespace
 			const logs::level lv{msg};
 			const std::string_view channel = msg->name ? msg->name : "";
 			const bool problem = lv <= logs::level::warning && lv != logs::level::success && lv != logs::level::always;
-			const bool keep = problem || text.starts_with("UWP:") || (channel == "SYS" && (text.starts_with("Serial:") ||
+			// The trackers (RPCS3 Spartan Test, PSYCHOsmurf): why a frame was late, sound running short, video memory,
+			// freezes. Notes in RPCS3.log; here too, so they reach the reports (the RSX samples at most 60 a run).
+			static std::atomic<u32> s_rsx_samples{0};
+			const bool tracker = text.starts_with("UWP short stalls") || text.starts_with("UWP audio:") ||
+				text.starts_with("UWP VRAM") || text.starts_with("UWP stall:") ||
+				(text.starts_with("UWP RSX sampled") && s_rsx_samples++ < 60);
+			const bool keep = problem || tracker || text.starts_with("UWP:") || (channel == "SYS" && (text.starts_with("Serial:") ||
 				text.starts_with("Title:") || text.starts_with("Category:") || text.starts_with("Version:")));
 			if (!keep || (channel == "PAT" && lv == logs::level::fatal))
 				return;

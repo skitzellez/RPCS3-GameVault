@@ -403,8 +403,28 @@ namespace
 		bool use_home = !home.empty();
 		if (use_home && !fs::is_dir(home.substr(0, 3)))
 		{
-			note = fmt::format("dev_hdd0 is on %s, which is not connected", home);
-			use_home = false;
+			// The USB drive came back with another letter (F: -> E:; owner console 11-23: every game blocked with
+			// "Your games and saves are on F:" while they were on E:). The same folder on another drive is the same
+			// drive: the home follows it.
+			const std::string rest = home.substr(2);   // "/RPCS3/dev_hdd0/"
+			std::string moved;
+			for (char d = 'D'; d <= 'Z' && moved.empty(); d++)
+			{
+				const std::string there = std::string(1, d) + ":" + rest;
+				if (d != 'Q' && fs::is_dir(there))
+					moved = there;
+			}
+			if (!moved.empty())
+			{
+				note = fmt::format("dev_hdd0 was on %s, its drive is now %s", home, moved.substr(0, 2));
+				home = moved;
+				fs::write_file(home_file, fs::rewrite, home);
+			}
+			else
+			{
+				note = fmt::format("dev_hdd0 is on %s, which is not connected", home);
+				use_home = false;
+			}
 		}
 		else if (!use_home)
 		{

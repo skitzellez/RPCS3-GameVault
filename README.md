@@ -136,6 +136,10 @@ This port is based on [RPCS3](https://github.com/RPCS3/rpcs3) and keeps its lice
 signer. The menu uses Microsoft's WinUI 2 (MIT). The source of everything in a release is in this
 repository.
 
+Xbox memory, stability and diagnostics fixes (video memory limit and trimmer, descriptor memory,
+RSX FIFO and vblank deadlocks, kept HDD1 caches, the God of War III texture upload crash) come from
+[RPCS3 Spartan Test](https://github.com/PSYCHOsmurf-beep/RPCS3-GameVault) by PSYCHOsmurf.
+
 The upstream RPCS3 README follows.
 
 ---

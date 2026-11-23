@@ -354,14 +354,22 @@ namespace
 			}
 
 			fs::stat_t have{};
-			if (fs::get_stat(dst + entry.name, have) && !have.is_directory && have.mtime >= entry.mtime)
+			const bool there = fs::get_stat(dst + entry.name, have) && !have.is_directory;
+			if (there && have.mtime >= entry.mtime)
 				continue;
 
 			const std::string part = dst + entry.name + ".rpcs3part";
 			if (!fs::copy_file(src + entry.name, part, true) || !fs::rename(part, dst + entry.name, true))
 			{
-				sys_log.error("UWP: cannot copy %s%s to %s (%s)", src, entry.name, dst, fs::g_tls_error);
 				fs::remove_file(part);
+				// a file the drive already has, that an older install of the app wrote and this one may not replace
+				// (owner console 11-23: home/00000001/localusername): the drive's copy stays, the move goes on
+				if (there)
+				{
+					sys_log.warning("UWP: kept the drive's %s%s (could not replace it: %s)", dst, entry.name, fs::g_tls_error);
+					continue;
+				}
+				sys_log.error("UWP: cannot copy %s%s to %s (%s)", src, entry.name, dst, fs::g_tls_error);
 				return false;
 			}
 

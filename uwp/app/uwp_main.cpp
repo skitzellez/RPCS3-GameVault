@@ -1051,6 +1051,10 @@ namespace
 				// levels are pure white without Write Color Buffers (Xbox 2026-11-10, BLUS31040 from a NAS .iso).
 				{"BLUS31040", "Fuse", "Net:\n  Internet enabled: Disconnected\nVideo:\n  Write Color Buffers: true\n"},
 				{"BLJM60244", "Blur", "Core:\n  SPU Block Size: Safe\n  SPU loop detection: true\n  Max SPURS Threads: 4\nVideo:\n  Write Color Buffers: true\n"},
+				// Bleach: Soul Ignition: with 1536 MB its video memory sat at 1152 of the 1228 MB budget and frames
+				// froze for 0.7-1.4 s in present and texture upload; with 1024 on the same console 16.4 -> 1.8 slow
+				// frames a minute, 30 fps held (Spartan). Only this game: the rest need the 1536.
+				{"BCAS20186", "Bleach: Soul Ignition", "Video:\n  Vulkan:\n    VRAM allocation limit (MB): 1024\n"},
 			};
 
 			for (const auto& game : s_games)
@@ -1369,10 +1373,11 @@ namespace
 			// the texture and surface caches only start evicting long after the app is out of memory
 			// (Watch Dogs). Cap it; LocalState/vram_limit holds another size in MB (256-65536).
 			{
-				// Spartan: 1024 instead of 1536. With 1536, Bleach Soul Ignition's video memory sat at 1152 of
-				// the 1228 MB budget and frames froze for 0.7-1.4 s in present and texture upload (the GPU waiting,
-				// RSX CPU ~0); with 1024 on the same console: 16.4 -> 1.8 slow frames a minute, 30 fps held.
-				u32 vram_mb = 1024;
+				// 1536 for every game. 0.1.35.1630 used 1024 for all of them (Spartan, for Bleach Soul Ignition's
+				// freezes), and many games then stopped with "Unreachable ... mem_allocator_vma::alloc()": their
+				// surfaces and textures need 700-900 MB, over the 819 MB budget that 1024 leaves (players, 11-24).
+				// Bleach keeps 1024 through its built-in game settings (get_database_config).
+				u32 vram_mb = 1536;
 				if (fs::file f{g_local_dir + "vram_limit"})
 				{
 					const std::string text = f.to_string();

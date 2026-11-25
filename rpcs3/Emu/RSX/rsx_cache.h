@@ -17,6 +17,11 @@
 #include "util/sysinfo.hpp"
 #include "util/fnv_hash.hpp"
 
+#ifdef RPCS3_UWP
+// RPCS3 for Game Vault: shaders other players shared for this game, taken before the cache is read (uwp/app/uwp_shader_share.cpp)
+namespace uwp_shader_share { void on_cache_load(const std::string& root_path, const std::string& pipeline_class, const std::string& version); }
+#endif
+
 namespace rsx
 {
 	template <typename pipeline_storage_type, typename backend_storage>
@@ -245,6 +250,9 @@ namespace rsx
 				return;
 			}
 
+#ifdef RPCS3_UWP
+			uwp_shader_share::on_cache_load(root_path, pipeline_class_name, version_prefix);
+#endif
 			std::string directory_path = root_path + "/pipelines/" + pipeline_class_name + "/" + version_prefix;
 
 			fs::dir root = fs::dir(directory_path);

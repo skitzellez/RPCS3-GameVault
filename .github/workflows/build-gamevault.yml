@@ -84,6 +84,11 @@ jobs:
       - name: Vulkan headers
         run: git clone --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git ../Vulkan-Headers
 
+      - name: Shader sharing key (from the GV_SHARE_KEY secret; never in git, empty = no sending)
+        env:
+          GV_SHARE_KEY: ${{ secrets.GV_SHARE_KEY }}
+        run: printf '#define GV_SHARE_KEY "%s"\n' "$GV_SHARE_KEY" > uwp/app/uwp_share_key.h
+
       - name: RPCS3
         run: |
           cmake -S . -B ../build-uwp -G Ninja \
